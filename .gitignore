@@ -1,0 +1,21 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Packaging & distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environments
+.env
+.venv
+venv/
+
+# Local diagnostic / test outputs
+.old.git*/
+scratch/
+test_output/
+*.log
