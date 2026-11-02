@@ -383,43 +383,32 @@ class WiaClient:
 
         output_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        requires_post_processing: bool = (
-            rotation_degrees != 0
-            or auto_crop_whitespace
-            or output_format.strip().lower().lstrip(".") not in ("png",)
-            or output_file_path.suffix.strip().lower() not in ("", ".png")
-        )
-
-        if not requires_post_processing:
-            image_result: object = scanner_item.Transfer(WIA_FORMAT_PNG_GUID)  # type: ignore[attr-defined]
-            image_result.SaveFile(str(output_file_path))  # type: ignore[attr-defined]
-        else:
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temporary_file:
-                temporary_png_path: Path = Path(temporary_file.name)
-            try:
-                if temporary_png_path.exists():
-                    temporary_png_path.unlink()
-                raw_transfer: object = scanner_item.Transfer(WIA_FORMAT_PNG_GUID)  # type: ignore[attr-defined]
-                raw_transfer.SaveFile(str(temporary_png_path))  # type: ignore[attr-defined]
-                decoded_wia_bgr: Optional[np.ndarray] = cv2.imread(str(temporary_png_path), cv2.IMREAD_COLOR)
-                if decoded_wia_bgr is None:
-                    raise RuntimeError("Failed to read temporary PNG transferred from WIA scanner.")
-                apply_post_scan_adjustments_and_save(
-                    source_bgr_image=decoded_wia_bgr,
-                    output_file_path=output_file_path,
-                    resolution_dpi=effective_dpi,
-                    color_mode=color_mode,
-                    brightness=brightness,
-                    contrast=contrast,
-                    rotation_degrees=rotation_degrees,
-                    auto_crop_whitespace=auto_crop_whitespace,
-                    output_format=output_format,
-                    jpeg_quality=jpeg_quality,
-                    apply_software_tone=False,
-                )
-            finally:
-                if temporary_png_path.exists():
-                    temporary_png_path.unlink()
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temporary_file:
+            temporary_png_path: Path = Path(temporary_file.name)
+        try:
+            if temporary_png_path.exists():
+                temporary_png_path.unlink()
+            raw_transfer: object = scanner_item.Transfer(WIA_FORMAT_PNG_GUID)  # type: ignore[attr-defined]
+            raw_transfer.SaveFile(str(temporary_png_path))  # type: ignore[attr-defined]
+            decoded_wia_bgr: Optional[np.ndarray] = cv2.imread(str(temporary_png_path), cv2.IMREAD_COLOR)
+            if decoded_wia_bgr is None:
+                raise RuntimeError("Failed to read temporary PNG transferred from WIA scanner.")
+            apply_post_scan_adjustments_and_save(
+                source_bgr_image=decoded_wia_bgr,
+                output_file_path=output_file_path,
+                resolution_dpi=effective_dpi,
+                color_mode=color_mode,
+                brightness=brightness,
+                contrast=contrast,
+                rotation_degrees=rotation_degrees,
+                auto_crop_whitespace=auto_crop_whitespace,
+                output_format=output_format,
+                jpeg_quality=jpeg_quality,
+                apply_software_tone=False,
+            )
+        finally:
+            if temporary_png_path.exists():
+                temporary_png_path.unlink()
 
         if enable_beep:
             play_completion_beep()
