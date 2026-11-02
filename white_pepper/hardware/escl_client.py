@@ -363,9 +363,10 @@ def decode_and_clip_escl_payload(
             page_height_points: float = float(first_page.rect.height)  # type: ignore[attr-defined]
 
             clip_rectangle: Optional[object] = None
+            exceeds_requested_box: bool = False
             if not resolved_region.is_full_platen:
                 # Only clip if the returned PDF page is larger than the requested region
-                exceeds_requested_box: bool = (
+                exceeds_requested_box = (
                     (page_width_points - resolved_region.width_points > 2.0)
                     or (page_height_points - resolved_region.height_points > 2.0)
                     or (resolved_region.offset_x_points > 0.5)
@@ -395,6 +396,24 @@ def decode_and_clip_escl_payload(
                         ),
                     )
                     clip_rectangle = fitz.Rect(clip_x0, clip_y0, clip_x1, clip_y1)  # type: ignore[attr-defined]
+
+            if not exceeds_requested_box:
+                embedded_image_list: list[tuple[object, ...]] = list(
+                    first_page.get_images(full=True)  # type: ignore[attr-defined]
+                )
+                if len(embedded_image_list) == 1:
+                    image_cross_reference: int = int(embedded_image_list[0][0])  # type: ignore[arg-type]
+                    extracted_image_dictionary: dict[str, object] = (
+                        pdf_document.extract_image(image_cross_reference)  # type: ignore[attr-defined]
+                    )
+                    raw_image_bytes: Optional[bytes] = extracted_image_dictionary.get("image")  # type: ignore[assignment]
+                    if isinstance(raw_image_bytes, bytes) and len(raw_image_bytes) > 0:
+                        pdf_image_buffer: np.ndarray = np.frombuffer(raw_image_bytes, dtype=np.uint8)
+                        native_pdf_bgr: Optional[np.ndarray] = cv2.imdecode(
+                            pdf_image_buffer, cv2.IMREAD_COLOR
+                        )
+                        if native_pdf_bgr is not None:
+                            return native_pdf_bgr
 
             rendered_pixmap: object = first_page.get_pixmap(  # type: ignore[attr-defined]
                 dpi=resolution_dpi,
@@ -506,14 +525,14 @@ class EsclClient:
         endpoint_url: str = f"http://{self.host_address}:{self.port_number}/eSCL"
         return endpoint_url
 
-    def is_reachable(self, probe_timeout_seconds: float = 2.0) -> bool:
+    def is_reachable(self, probe_timeout_seconds: float = 5.0) -> bool:
         """
         Check whether the remote eSCL scanner responds with HTTP 200 on ``/ScannerStatus``.
 
         Parameters
         ----------
         probe_timeout_seconds : float, optional
-            Socket connection timeout in seconds, by default ``2.0``.
+            Socket connection timeout in seconds, by default ``5.0``.
 
         Returns
         -------
@@ -521,21 +540,54 @@ class EsclClient:
             ``True`` when the scanner endpoint responds with HTTP 200, ``False`` otherwise.
         """
         status_url: str = f"{self.base_url}/ScannerStatus"
-        try:
-            with urllib.request.urlopen(status_url, timeout=probe_timeout_seconds) as response:
-                is_http_ok: bool = int(response.status) == 200
-                return is_http_ok
-        except Exception:
-            return False
+        attempt_number: int
+        for attempt_number in range(2):
+            try:
+                with urllib.request.urlopen(status_url, timeout=probe_timeout_seconds) as response:
+                    is_http_ok: bool = int(response.status) == 200
+                    if is_http_ok:
+                        return True
+            except Exception:
+                if attempt_number == 0:
+                    time.sleep(0.5)
+        return False
 
-    def query_capabilities(self, timeout_seconds: float = 3.0) -> str:
+    def wait_until_idle(self, timeout_seconds: float = 25.0) -> bool:
+        """
+        Poll ``/ScannerStatus`` until ``<pwg:State>Idle</pwg:State>`` is reported or timeout expires.
+
+        Parameters
+        ----------
+        timeout_seconds : float, optional
+            Maximum time in seconds to wait for the carriage to return to ``Idle``,
+            by default ``25.0``.
+
+        Returns
+        -------
+        bool
+            ``True`` if the scanner reported ``Idle`` within the timeout window, ``False`` otherwise.
+        """
+        status_url: str = f"{self.base_url}/ScannerStatus"
+        deadline_timestamp: float = time.time() + timeout_seconds
+        while time.time() < deadline_timestamp:
+            try:
+                with urllib.request.urlopen(status_url, timeout=3.0) as status_response:
+                    status_xml_text: str = status_response.read().decode("utf-8", errors="ignore")
+                    if "<pwg:State>Idle</pwg:State>" in status_xml_text:
+                        return True
+            except Exception:
+                pass
+            time.sleep(1.0)
+        return False
+
+    def query_capabilities(self, timeout_seconds: float = 6.0) -> str:
         """
         Fetch the raw ``/ScannerCapabilities`` XML document from the scanner.
 
         Parameters
         ----------
         timeout_seconds : float, optional
-            HTTP request timeout in seconds, by default ``3.0``.
+            HTTP request timeout in seconds, by default ``6.0``.
 
         Returns
         -------
@@ -688,25 +740,33 @@ class EsclClient:
                 f"  <scan:Contrast>{escl_contrast_value}</scan:Contrast>\n"
             )
 
+        normalized_output_format: str = output_format.strip().lower().lstrip(".")
+        escl_document_format: str = (
+            "application/pdf" if normalized_output_format == "pdf" else "image/jpeg"
+        )
+
+        self.wait_until_idle(timeout_seconds=25.0)
+
         scan_xml_payload: str = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<scan:ScanSettings xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03" '
-            'xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm">\n'
+            '<scan:ScanSettings xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm" '
+            'xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03">\n'
             "  <pwg:Version>2.63</pwg:Version>\n"
             f"  <scan:Intent>{escl_intent_token}</scan:Intent>\n"
-            "  <scan:DocumentFormat>application/pdf</scan:DocumentFormat>\n"
             "  <pwg:ScanRegions>\n"
             "    <pwg:ScanRegion>\n"
+            "      <pwg:ContentRegionUnits>escl:ThreeHundredthsOfInches</pwg:ContentRegionUnits>\n"
             f"      <pwg:XOffset>{active_region.offset_x_escl_units}</pwg:XOffset>\n"
             f"      <pwg:YOffset>{active_region.offset_y_escl_units}</pwg:YOffset>\n"
             f"      <pwg:Width>{active_region.width_escl_units}</pwg:Width>\n"
             f"      <pwg:Height>{active_region.height_escl_units}</pwg:Height>\n"
             "    </pwg:ScanRegion>\n"
             "  </pwg:ScanRegions>\n"
-            "  <scan:InputSource>Platen</scan:InputSource>\n"
-            f"  <scan:ColorMode>{escl_color_token}</scan:ColorMode>\n"
+            "  <pwg:InputSource>Platen</pwg:InputSource>\n"
+            f"  <scan:DocumentFormatExt>{escl_document_format}</scan:DocumentFormatExt>\n"
             f"  <scan:XResolution>{resolution_dpi}</scan:XResolution>\n"
             f"  <scan:YResolution>{resolution_dpi}</scan:YResolution>\n"
+            f"  <scan:ColorMode>{escl_color_token}</scan:ColorMode>\n"
             f"{tone_xml_lines}"
             "</scan:ScanSettings>\n"
         )
@@ -719,10 +779,26 @@ class EsclClient:
             method="POST",
         )
 
-        with urllib.request.urlopen(request_object, timeout=15) as job_response:
-            location_header: Optional[str] = job_response.headers.get("Location")
-            if not location_header:
-                raise RuntimeError("eSCL scanner did not return a valid ScanJob Location header.")
+        location_header: Optional[str] = None
+        maximum_job_creation_attempts: int = 5
+        for attempt_index in range(maximum_job_creation_attempts):
+            try:
+                with urllib.request.urlopen(request_object, timeout=15) as job_response:
+                    location_header = job_response.headers.get("Location")
+                    if location_header:
+                        break
+            except urllib.error.HTTPError as http_error:
+                if http_error.code == 503 and attempt_index < maximum_job_creation_attempts - 1:
+                    print(
+                        f"  [Notice] Scanner carriage busy (HTTP 503). Retrying in 2.5s "
+                        f"(attempt {attempt_index + 1}/{maximum_job_creation_attempts})..."
+                    )
+                    time.sleep(2.5)
+                    continue
+                raise
+
+        if not location_header:
+            raise RuntimeError("eSCL scanner did not return a valid ScanJob Location header.")
 
         job_url: str = location_header
         if not job_url.startswith("http"):
