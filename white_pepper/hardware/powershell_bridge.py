@@ -111,34 +111,23 @@ def execute_powershell_wia_scan(
     clamped_brightness: int = max(-100, min(100, brightness))
     clamped_contrast: int = max(-100, min(100, contrast))
 
-    requires_post_processing: bool = (
-        rotation_degrees != 0
-        or auto_crop_whitespace
-        or output_format.strip().lower().lstrip(".") not in ("png",)
-        or output_file_path.suffix.strip().lower() not in ("", ".png")
-    )
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temporary_file:
+        temporary_png_path: Path = Path(temporary_file.name)
+    if temporary_png_path.exists():
+        temporary_png_path.unlink()
 
-    temporary_png_path: Optional[Path] = None
-    transfer_target_path: Path = output_file_path
-    if requires_post_processing:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temporary_file:
-            temporary_png_path = Path(temporary_file.name)
-        if temporary_png_path.exists():
-            temporary_png_path.unlink()
-        transfer_target_path = temporary_png_path
-
-    escaped_transfer_path: str = str(transfer_target_path).replace("'", "''")
-    use_max_str: str = "$true" if maximum_quality else "$false"
-    is_full_platen_str: str = "$true" if active_region.is_full_platen else "$false"
+    escaped_transfer_path: str = str(temporary_png_path).replace("'", "''")
+    use_max_string: str = "$true" if maximum_quality else "$false"
+    is_full_platen_string: str = "$true" if active_region.is_full_platen else "$false"
 
     powershell_script: str = f"""
 $ErrorActionPreference = 'Stop'
-$useMaxQuality = {use_max_str}
-$isFullPlaten = {is_full_platen_str}
+$useMaxQuality = {use_max_string}
+$isFullPlaten = {is_full_platen_string}
 $targetStandardDpi = {effective_dpi}
 $wiaDataType = {wia_data_type}
-$startXPx = {start_x_pixels}
-$startYPx = {start_y_pixels}
+$startXPx = {horizontal_start_pixels}
+$startYPx = {vertical_start_pixels}
 $widthPx = {width_pixels}
 $heightPx = {height_pixels}
 $relBrightness = {clamped_brightness}
@@ -162,9 +151,9 @@ if ($null -eq $scannerDevice) {{
 $scannerItem = $scannerDevice.Items.Item(1)
 
 function Set-ResolutionProperty($item, $propertyName, $maxQuality, $standardDpi) {{
+    $chosenDpi = [int32]$standardDpi
     try {{
         $prop = $item.Properties.Item($propertyName)
-        $chosenDpi = $standardDpi
         if ($prop.SubType -eq 1) {{
             if ($maxQuality) {{
                 $chosenDpi = [int32]$prop.SubTypeMax
@@ -174,15 +163,16 @@ function Set-ResolutionProperty($item, $propertyName, $maxQuality, $standardDpi)
         }} elseif ($prop.SubType -eq 2) {{
             $vals = [int[]]$prop.SubTypeValues
             if ($maxQuality) {{
-                $chosenDpi = ($vals | Measure-Object -Maximum).Maximum
+                $chosenDpi = [int32](($vals | Measure-Object -Maximum).Maximum)
             }} elseif ($vals -contains $standardDpi) {{
-                $chosenDpi = $standardDpi
+                $chosenDpi = [int32]$standardDpi
             }} else {{
-                $chosenDpi = ($vals | Sort-Object {{ [Math]::Abs($_ - $standardDpi) }})[0]
+                $chosenDpi = [int32](($vals | Sort-Object {{ [Math]::Abs($_ - $standardDpi) }})[0])
             }}
         }}
         $prop.Value = [int32]$chosenDpi
     }} catch {{}}
+    return [int32]$chosenDpi
 }}
 
 function Set-BoundedProperty($item, $propertyName, [int32]$desiredVal, [bool]$useMax = $false) {{
@@ -219,8 +209,16 @@ function Set-RelativeTone($item, $propertyName, [int32]$percent) {{
 
 try {{ $scannerItem.Properties.Item("Data Type").Value = [int32]$wiaDataType }} catch {{}}
 
-Set-ResolutionProperty $scannerItem "Horizontal Resolution" $useMaxQuality $targetStandardDpi
-Set-ResolutionProperty $scannerItem "Vertical Resolution" $useMaxQuality $targetStandardDpi
+$actualDpi = Set-ResolutionProperty $scannerItem "Horizontal Resolution" $useMaxQuality $targetStandardDpi
+[void](Set-ResolutionProperty $scannerItem "Vertical Resolution" $useMaxQuality $actualDpi)
+
+if ($actualDpi -ne $targetStandardDpi -and $targetStandardDpi -gt 0) {{
+    $scaleRatio = [double]$actualDpi / [double]$targetStandardDpi
+    $startXPx = [int32][Math]::Round($startXPx * $scaleRatio)
+    $startYPx = [int32][Math]::Round($startYPx * $scaleRatio)
+    $widthPx = [int32][Math]::Max(1, [Math]::Round($widthPx * $scaleRatio))
+    $heightPx = [int32][Math]::Max(1, [Math]::Round($heightPx * $scaleRatio))
+}}
 
 Set-BoundedProperty $scannerItem "Horizontal Start Position" $startXPx $false
 Set-BoundedProperty $scannerItem "Vertical Start Position" $startYPx $false
@@ -238,6 +236,7 @@ Set-RelativeTone $scannerItem "Contrast" $relContrast
 
 $image = $scannerItem.Transfer("{WIA_FORMAT_PNG_GUID}")
 $image.SaveFile('{escaped_transfer_path}')
+Write-Output "ACTUAL_DPI:$actualDpi"
 """
 
     try:
@@ -252,25 +251,33 @@ $image.SaveFile('{escaped_transfer_path}')
             error_details: str = completed_process.stderr.strip() or completed_process.stdout.strip()
             raise RuntimeError(f"PowerShell WIA bridge scan failed: {error_details}")
 
-        if temporary_png_path is not None:
-            decoded_bgr: Optional[np.ndarray] = cv2.imread(str(temporary_png_path), cv2.IMREAD_COLOR)
-            if decoded_bgr is None:
-                raise RuntimeError("Failed to read temporary PNG from PowerShell WIA bridge.")
-            apply_post_scan_adjustments_and_save(
-                source_bgr_image=decoded_bgr,
-                output_file_path=output_file_path,
-                resolution_dpi=effective_dpi,
-                color_mode=color_mode,
-                brightness=clamped_brightness,
-                contrast=clamped_contrast,
-                rotation_degrees=rotation_degrees,
-                auto_crop_whitespace=auto_crop_whitespace,
-                output_format=output_format,
-                jpeg_quality=jpeg_quality,
-                apply_software_tone=False,
-            )
+        negotiated_dpi: int = effective_dpi
+        output_line: str
+        for output_line in completed_process.stdout.splitlines():
+            if output_line.strip().startswith("ACTUAL_DPI:"):
+                try:
+                    negotiated_dpi = int(output_line.strip().split(":", 1)[1])
+                except ValueError:
+                    negotiated_dpi = effective_dpi
+
+        decoded_bgr: Optional[np.ndarray] = cv2.imread(str(temporary_png_path), cv2.IMREAD_COLOR)
+        if decoded_bgr is None:
+            raise RuntimeError("Failed to read temporary PNG from PowerShell WIA bridge.")
+        apply_post_scan_adjustments_and_save(
+            source_bgr_image=decoded_bgr,
+            output_file_path=output_file_path,
+            resolution_dpi=negotiated_dpi,
+            color_mode=color_mode,
+            brightness=clamped_brightness,
+            contrast=clamped_contrast,
+            rotation_degrees=rotation_degrees,
+            auto_crop_whitespace=auto_crop_whitespace,
+            output_format=output_format,
+            jpeg_quality=jpeg_quality,
+            apply_software_tone=False,
+        )
     finally:
-        if temporary_png_path is not None and temporary_png_path.exists():
+        if temporary_png_path.exists():
             temporary_png_path.unlink()
 
     if enable_beep:
