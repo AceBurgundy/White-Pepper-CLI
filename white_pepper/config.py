@@ -392,7 +392,7 @@ class PdfCompilationConfiguration:
     custom_height_millimeters: Optional[float] = None
     margin_millimeters: float = 0.0
     fit_mode: str = "contain"
-    resolution_dpi: int = 300
+    resolution_dpi: Optional[int] = None
     jpeg_compression_quality: int = 92
     document_title: str = ""
     document_author: str = ""
