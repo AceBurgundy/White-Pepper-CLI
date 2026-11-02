@@ -7,6 +7,7 @@ and OCR upright rotation, and multi-format virtual-paper PDF compilation.
 """
 
 from __future__ import annotations
+from PIL import Image
 
 # CLI = Command Line Interface
 # DPI = Dots Per Inch
@@ -36,6 +37,11 @@ from white_pepper.algorithms.card_vision import (
     CardExtractionResult,
     composite_card_onto_background,
     extract_and_deskew_id_card,
+)
+from white_pepper.algorithms.legal_vision import (
+    LegalStitchResult,
+    save_legal_stitch_result_to_pdf,
+    stitch_legal_two_pass,
 )
 from white_pepper.algorithms.geometry import (
     ID1_CORNER_RADIUS_MILLIMETERS,
@@ -332,8 +338,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--dpi",
         dest="resolution_dpi",
         type=int,
-        default=300,
-        help="Reference DPI metadata for PDF scaling (default: 300).",
+        default=None,
+        help="Explicit DPI override for PDF scaling (default: auto-read embedded image DPI, fallback 300).",
     )
     pdf_parser.add_argument(
         "--jpeg-compression",
@@ -356,6 +362,41 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=str,
         default="",
         help="Optional PDF Author metadata string.",
+    )
+
+    legal_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "stitch-legal",
+        aliases=["legal-stitch"],
+        help="Stitch top upright and bottom upside-down Letter scans into a seamless Legal document.",
+    )
+    legal_parser.add_argument(
+        "--top",
+        dest="top_image_path",
+        type=Path,
+        required=True,
+        help="Path to Pass 1 (top upright) Letter scan.",
+    )
+    legal_parser.add_argument(
+        "--bottom",
+        dest="bottom_image_path",
+        type=Path,
+        required=True,
+        help="Path to Pass 2 (bottom upside-down) Letter scan.",
+    )
+    legal_parser.add_argument(
+        "--output",
+        "-o",
+        dest="output_path",
+        type=Path,
+        required=True,
+        help="Destination output path (PDF or PNG).",
+    )
+    legal_parser.add_argument(
+        "--dpi",
+        dest="resolution_dpi",
+        type=int,
+        default=300,
+        help="Optical resolution in DPI (default: 300).",
     )
 
     return parser
@@ -433,7 +474,15 @@ def handle_cards_command(arguments: argparse.Namespace) -> None:
             and composited_card.shape[2] == 4
             and output_extension in ("png", "tiff")
         ):
-            cv2.imwrite(str(destination_path), composited_card)
+            target_card_dpi: int = int(arguments.resolution_dpi)
+            bgra_to_rgba: np.ndarray = cv2.cvtColor(composited_card, cv2.COLOR_BGRA2RGBA)
+            pil_rgba_card: Image.Image = Image.fromarray(bgra_to_rgba)
+            pil_format_name: str = "TIFF" if output_extension == "tiff" else "PNG"
+            pil_rgba_card.save(
+                str(destination_path),
+                format=pil_format_name,
+                dpi=(float(target_card_dpi), float(target_card_dpi)),
+            )
         else:
             bgr_only: np.ndarray = (
                 composited_card[:, :, :3]
@@ -603,7 +652,9 @@ def handle_compile_pdf_command(arguments: argparse.Namespace) -> None:
         custom_height_millimeters=arguments.custom_height_mm,
         margin_millimeters=float(arguments.margin_mm),
         fit_mode=str(arguments.fit_mode),
-        resolution_dpi=int(arguments.resolution_dpi),
+        resolution_dpi=(
+            int(arguments.resolution_dpi) if arguments.resolution_dpi is not None else None
+        ),
         jpeg_compression_quality=int(arguments.jpeg_compression),
         document_title=str(arguments.document_title),
         document_author=str(arguments.document_author),
@@ -616,6 +667,49 @@ def handle_compile_pdf_command(arguments: argparse.Namespace) -> None:
     saved_pdf_path: Path = compile_pdf_with_config(pdf_configuration)
     file_size_megabytes: float = float(saved_pdf_path.stat().st_size) / (1024.0 * 1024.0)
     print(f"[Success] Compiled PDF document: {saved_pdf_path} ({file_size_megabytes:.2f} MB)")
+
+
+def handle_stitch_legal_command(arguments: argparse.Namespace) -> None:
+    """Execute deterministic two-pass legal stitching from CLI arguments."""
+    top_image_path: Path = Path(arguments.top_image_path).resolve()
+    bottom_image_path: Path = Path(arguments.bottom_image_path).resolve()
+    output_path: Path = Path(arguments.output_path).resolve()
+    resolution_dpi: int = int(arguments.resolution_dpi)
+
+    if not top_image_path.exists():
+        print(f"Error: Top image not found: {top_image_path}", file=sys.stderr)
+        sys.exit(1)
+    if not bottom_image_path.exists():
+        print(f"Error: Bottom image not found: {bottom_image_path}", file=sys.stderr)
+        sys.exit(1)
+
+    top_bgr: Optional[np.ndarray] = cv2.imread(str(top_image_path), cv2.IMREAD_COLOR)
+    bottom_bgr: Optional[np.ndarray] = cv2.imread(str(bottom_image_path), cv2.IMREAD_COLOR)
+    if top_bgr is None or bottom_bgr is None:
+        print("Error: Failed to decode input images.", file=sys.stderr)
+        sys.exit(1)
+
+    print(
+        f"Stitching Legal Document from {top_image_path.name} and {bottom_image_path.name} @ {resolution_dpi} DPI..."
+    )
+    result: LegalStitchResult = stitch_legal_two_pass(
+        pass1_top_bgr_image=top_bgr,
+        pass2_bottom_upside_down_bgr_image=bottom_bgr,
+        resolution_dpi=resolution_dpi,
+        enable_phase_correlation=True,
+    )
+
+    if output_path.suffix.lower() == ".pdf":
+        save_legal_stitch_result_to_pdf(result, output_path)
+    else:
+        rgb_image: np.ndarray = cv2.cvtColor(result.stitched_bgr_image, cv2.COLOR_BGR2RGB)
+        pil_image: Image.Image = Image.fromarray(rgb_image)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        pil_image.save(output_path, "PNG", dpi=(float(resolution_dpi), float(resolution_dpi)))
+
+    print(
+        f"[Success] Stitched Legal saved: {output_path} (Confidence: {result.correlation_confidence * 100:.1f}%)"
+    )
 
 
 def main() -> None:
@@ -639,6 +733,8 @@ def main() -> None:
         handle_cards_command(arguments)
     elif str(arguments.command) in ("booklets", "booklet"):
         handle_booklets_command(arguments)
+    elif str(arguments.command) in ("stitch-legal", "legal-stitch"):
+        handle_stitch_legal_command(arguments)
     elif str(arguments.command) == "compile-pdf":
         if str(arguments.paper_size) == "custom" and (
             arguments.custom_width_mm is None or arguments.custom_height_mm is None
