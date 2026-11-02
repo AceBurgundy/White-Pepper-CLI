@@ -324,7 +324,7 @@ def _prepare_image_and_placement(
 def compile_images_to_pdf(
     image_paths: list[Path],
     output_pdf_path: Path,
-    resolution_dpi: int = 300,
+    resolution_dpi: Optional[int] = None,
     paper_size: str = "auto",
     page_orientation: str = "auto",
     custom_width_millimeters: Optional[float] = None,
@@ -393,7 +393,7 @@ def compile_images_to_pdf(
         supported_fits: str = ", ".join(SUPPORTED_PDF_FIT_MODES)
         raise ValueError(f"Unsupported PDF fit_mode '{fit_mode}'. Expected one of: {supported_fits}.")
 
-    effective_dpi: int = max(1, resolution_dpi)
+    fallback_dpi: int = max(1, resolution_dpi) if resolution_dpi is not None else 300
     margin_points: float = millimeters_to_points(margin_millimeters)
     output_pdf_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -405,13 +405,30 @@ def compile_images_to_pdf(
         for image_path in image_paths:
             try:
                 loaded_pil: Image.Image = Image.open(image_path)
+                embedded_dpi_info: object = loaded_pil.info.get("dpi")
                 rgb_pil: Image.Image = loaded_pil.convert("RGB")
             except Exception as open_error:
                 print(f"  [Warning] Skipping unreadable image {image_path}: {open_error}")
                 continue
 
-            native_width_points: float = (float(rgb_pil.width) / float(effective_dpi)) * POINTS_PER_INCH
-            native_height_points: float = (float(rgb_pil.height) / float(effective_dpi)) * POINTS_PER_INCH
+            horizontal_page_dpi: float = float(fallback_dpi)
+            vertical_page_dpi: float = float(fallback_dpi)
+            if (
+                resolution_dpi is None
+                and isinstance(embedded_dpi_info, (tuple, list))
+                and len(embedded_dpi_info) >= 2
+            ):
+                try:
+                    horizontal_candidate_dpi: float = float(embedded_dpi_info[0])
+                    vertical_candidate_dpi: float = float(embedded_dpi_info[1])
+                    if horizontal_candidate_dpi > 1.0 and vertical_candidate_dpi > 1.0:
+                        horizontal_page_dpi = horizontal_candidate_dpi
+                        vertical_page_dpi = vertical_candidate_dpi
+                except (TypeError, ValueError):
+                    pass
+
+            native_width_points: float = (float(rgb_pil.width) / horizontal_page_dpi) * POINTS_PER_INCH
+            native_height_points: float = (float(rgb_pil.height) / vertical_page_dpi) * POINTS_PER_INCH
 
             page_dims: tuple[float, float] = _resolve_virtual_page_points(
                 native_width_points=native_width_points,
@@ -512,7 +529,7 @@ def compile_images_to_pdf(
         str(output_pdf_path),
         save_all=True,
         append_images=pillow_images,
-        resolution=float(effective_dpi),
+        resolution=float(fallback_dpi),
         title=document_title or None,
         author=document_author or None,
     )
