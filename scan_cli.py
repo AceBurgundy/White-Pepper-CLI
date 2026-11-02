@@ -38,6 +38,11 @@ from white_pepper.algorithms.card_vision import (
     composite_card_onto_background,
     extract_and_deskew_id_card,
 )
+from white_pepper.algorithms.legal_vision import (
+    LegalStitchResult,
+    save_legal_stitch_result_to_pdf,
+    stitch_legal_two_pass,
+)
 from white_pepper.algorithms.geometry import (
     ID1_CORNER_RADIUS_MILLIMETERS,
     SUPPORTED_PAPER_SIZE_KEYS,
@@ -442,6 +447,14 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=False,
         help="Start scanning immediately without waiting for interactive SPACEBAR press.",
     )
+    card_parser.add_argument(
+        "--prefix",
+        "--name",
+        dest="card_filename_prefix",
+        type=str,
+        default="card",
+        help="Filename prefix for extracted card output (default: card).",
+    )
 
     booklet_parser: argparse.ArgumentParser = subparsers.add_parser(
         "booklet",
@@ -497,6 +510,50 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Initial countdown delay in seconds before spread #1 (default: 0).",
+    )
+
+    legal_stitch_parser: argparse.ArgumentParser = subparsers.add_parser(
+        "legal-stitch",
+        help="Deterministic two-pass US Legal (8.50\" x 14.00\") scanning and stitching.",
+    )
+    _attach_shared_connection_flags(legal_stitch_parser, use_suppress_defaults=True)
+    legal_stitch_parser.add_argument(
+        "--name",
+        "--prefix",
+        dest="document_name",
+        type=str,
+        default="Legal_Document",
+        help="Target base document filename.",
+    )
+    legal_stitch_parser.add_argument(
+        "--resolution",
+        "--dpi",
+        dest="resolution_dpi",
+        type=int,
+        choices=list(SUPPORTED_DPI_VALUES),
+        default=300,
+        help="Optical scan resolution in DPI (default: 300).",
+    )
+    legal_stitch_parser.add_argument(
+        "--color-mode",
+        dest="color_mode",
+        choices=list(SUPPORTED_COLOR_MODES),
+        default="color",
+        help="Color mode: color, grayscale, or bw (default: color).",
+    )
+    legal_stitch_parser.add_argument(
+        "--format",
+        dest="output_format",
+        choices=["pdf", "png"],
+        default="pdf",
+        help="Output format: pdf (default) or png.",
+    )
+    legal_stitch_parser.add_argument(
+        "--ipc-mode",
+        dest="enable_ipc_mode",
+        action="store_true",
+        default=False,
+        help="Emit structured JSON events on stdout for frontend UI integration.",
     )
 
     return parser
@@ -824,7 +881,7 @@ def handle_card_command(
         target_directory=cards_directory,
     )
 
-    raw_capture_config: ScanConfiguration = ScanConfiguration(
+    raw_capture_configuration: ScanConfiguration = ScanConfiguration(
         destination_directory=cards_directory,
         output_file_path=temporary_raw_capture_path,
         paper_size="id-card",
@@ -842,7 +899,7 @@ def handle_card_command(
 
     print("Acquiring 5x5 inch platen area...")
     saved_raw_path: Path = scanner_manager.acquire_with_config(
-        configuration=raw_capture_config,
+        configuration=raw_capture_configuration,
         output_file_path=temporary_raw_capture_path,
     )
 
@@ -867,7 +924,8 @@ def handle_card_command(
         print("[Warning] Could not isolate card contour automatically. Keeping raw capture.")
         return
 
-    final_card_path: Path = cards_directory / f"card_{saved_raw_path.stem}.{output_extension}"
+    card_filename_prefix: str = str(getattr(arguments, "card_filename_prefix", "card")).strip() or "card"
+    final_card_path: Path = cards_directory / f"{card_filename_prefix}_{saved_raw_path.stem}.{output_extension}"
     requested_background: str = str(arguments.background_mode)
     effective_background: str = (
         "white"
@@ -879,8 +937,19 @@ def handle_card_command(
         background_mode=effective_background,
     )
 
-    if len(composited_image.shape) == 3 and composited_image.shape[2] == 4 and output_ext in ("png", "tiff"):
-        cv2.imwrite(str(final_card_path), composited_image)
+    if (
+        len(composited_image.shape) == 3
+        and composited_image.shape[2] == 4
+        and output_extension in ("png", "tiff")
+    ):
+        bgra_to_rgba: np.ndarray = cv2.cvtColor(composited_image, cv2.COLOR_BGRA2RGBA)
+        pil_rgba_card: Image.Image = Image.fromarray(bgra_to_rgba)
+        pil_format_name: str = "TIFF" if output_extension == "tiff" else "PNG"
+        pil_rgba_card.save(
+            str(final_card_path),
+            format=pil_format_name,
+            dpi=(float(card_resolution_dpi), float(card_resolution_dpi)),
+        )
     else:
         bgr_card: np.ndarray = (
             composited_image[:, :, :3]
@@ -890,9 +959,9 @@ def handle_card_command(
         apply_post_scan_adjustments_and_save(
             source_bgr_image=bgr_card,
             output_file_path=final_card_path,
-            resolution_dpi=card_dpi,
+            resolution_dpi=card_resolution_dpi,
             color_mode=str(arguments.color_mode),
-            output_format=output_ext,
+            output_format=output_extension,
             jpeg_quality=int(arguments.jpeg_quality),
         )
 
@@ -973,20 +1042,182 @@ def handle_booklet_command(
     page_counter: int = 1
     try:
         while True:
-            target_path: Path = booklet_directory / f"{page_counter:02d}.{spread_ext}"
+            target_path: Path = booklet_directory / f"{page_counter:02d}.{spread_extension}"
             print(f"[Capturing Spread #{page_counter}]")
             scanner_manager.acquire_with_config(
                 configuration=booklet_scan_config,
                 output_file_path=target_path,
             )
             print(f"[Saved] {target_path.name}")
-            if max_spreads > 0 and page_counter >= max_spreads:
-                print(f"\n[Done] Captured configured --max-scans={max_spreads} spreads.")
+            if maximum_spreads_count > 0 and page_counter >= maximum_spreads_count:
+                print(f"\n[Done] Captured configured --max-scans={maximum_spreads_count} spreads.")
                 break
-            display_countdown(interval_delay, action_description="Turn page. Next capture in")
+            display_countdown(interval_delay_seconds, action_description="Turn page. Next capture in")
             page_counter += 1
     except KeyboardInterrupt:
         print("\n[Stopped] Booklet scanning loop terminated by user.")
+
+
+def handle_legal_stitch_command(
+    scanner_manager: ScannerManager,
+    arguments: argparse.Namespace,
+) -> None:
+    """Execute the two-pass zero-gradient US Legal scanning and stitching workflow.
+
+    Parameters
+    ----------
+    scanner_manager : ScannerManager
+        Initialized White Pepper hardware controller.
+    arguments : argparse.Namespace
+        Parsed CLI arguments for the legal-stitch command.
+
+    Returns
+    -------
+    None
+    """
+    base_directory: Path = Path(str(getattr(arguments, "output_directory", r"D:\Pictures\Scanned")))
+    legal_directory: Path = base_directory / "legal"
+    legal_directory.mkdir(parents=True, exist_ok=True)
+
+    resolution_dpi: int = int(arguments.resolution_dpi)
+    document_name: str = str(arguments.document_name).strip("\"'")
+    color_mode: str = str(arguments.color_mode)
+    output_format: str = str(arguments.output_format).lower()
+    enable_ipc_mode: bool = bool(arguments.enable_ipc_mode)
+    usb_only_flag: bool = bool(getattr(arguments, "usb_only", False))
+    requested_backend: str = str(getattr(arguments, "backend_mode", "auto"))
+    effective_backend: str = "wia" if (usb_only_flag and requested_backend == "auto") else requested_backend
+    prefer_escl_flag: bool = (not usb_only_flag) and (effective_backend in ("auto", "escl"))
+
+    temporary_scratch_directory: Path = legal_directory / "_scratch_legal"
+    temporary_scratch_directory.mkdir(parents=True, exist_ok=True)
+
+    target_output_path: Path = legal_directory / f"{document_name}.{output_format}"
+
+    if not enable_ipc_mode:
+        print("--------------------------------------------------")
+        print("  white-pepper: US Legal (8.5\" x 14.0\") 2-Pass Stitching")
+        print("  Strategy   : Dual Letter Clamped (Zero Black Gradient)")
+        print(f"  Resolution : {resolution_dpi} DPI ({color_mode})")
+        print(f"  Destination: {target_output_path}")
+        print("--------------------------------------------------\n")
+
+    try:
+        # Pass 1: Upright Top Scan
+        if enable_ipc_mode:
+            print('{"event": "step_prompt", "step": 1, "message": "Place Legal paper upright at top-left printer markings."}', flush=True)
+            sys.stdin.readline()
+        else:
+            wait_for_spacebar("[STEP 1 OF 2] Place Legal paper UPRIGHT at top-left markings. Press SPACEBAR to scan Pass 1...")
+
+        pass1_temporary_path: Path = temporary_scratch_directory / "pass1_top.png"
+        pass1_configuration: ScanConfiguration = ScanConfiguration(
+            destination_directory=temporary_scratch_directory,
+            output_file_path=pass1_temporary_path,
+            paper_size="letter",
+            resolution_dpi=resolution_dpi,
+            maximum_quality=(resolution_dpi == 1200),
+            color_mode=color_mode,
+            intent_type="document",
+            output_format="png",
+            enable_beep=not bool(getattr(arguments, "disable_beep", False)),
+            prefer_escl=prefer_escl_flag,
+            backend_mode=effective_backend,
+            escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
+            escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+        )
+
+        if not enable_ipc_mode:
+            print("Acquiring Pass 1 (Top Letter Region)...")
+        scanner_manager.acquire_with_config(
+            configuration=pass1_configuration,
+            output_file_path=pass1_temporary_path,
+        )
+
+        # Pass 2: Upside-Down Bottom Scan
+        if enable_ipc_mode:
+            print('{"event": "step_prompt", "step": 2, "message": "Rotate paper 180° upside-down. Align opposite corner at markings."}', flush=True)
+            sys.stdin.readline()
+        else:
+            wait_for_spacebar("\n[STEP 2 OF 2] Rotate paper 180° UPSIDE-DOWN. Align opposite corner at markings. Press SPACEBAR to scan Pass 2...")
+
+        pass2_temporary_path: Path = temporary_scratch_directory / "pass2_bottom.png"
+        pass2_configuration: ScanConfiguration = ScanConfiguration(
+            destination_directory=temporary_scratch_directory,
+            output_file_path=pass2_temporary_path,
+            paper_size="letter",
+            resolution_dpi=resolution_dpi,
+            maximum_quality=(resolution_dpi == 1200),
+            color_mode=color_mode,
+            intent_type="document",
+            output_format="png",
+            enable_beep=not bool(getattr(arguments, "disable_beep", False)),
+            prefer_escl=prefer_escl_flag,
+            backend_mode=effective_backend,
+            escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
+            escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+        )
+
+        if not enable_ipc_mode:
+            print("Acquiring Pass 2 (Bottom Letter Region)...")
+        scanner_manager.acquire_with_config(
+            configuration=pass2_configuration,
+            output_file_path=pass2_temporary_path,
+        )
+
+        # Stitching
+        if enable_ipc_mode:
+            print('{"event": "stitching", "message": "Joining scans via Fourier phase-correlation registration..."}', flush=True)
+        else:
+            print("\nStitching two passes into seamless 8.5\" x 14.0\" legal document...")
+
+        pass1_bgr_image: Optional[np.ndarray] = cv2.imread(str(pass1_temporary_path), cv2.IMREAD_COLOR)
+        pass2_bgr_image: Optional[np.ndarray] = cv2.imread(str(pass2_temporary_path), cv2.IMREAD_COLOR)
+
+        if pass1_bgr_image is None or pass2_bgr_image is None:
+            raise RuntimeError("Failed to read acquired pass images for stitching.")
+
+        stitch_result: LegalStitchResult = stitch_legal_two_pass(
+            pass1_top_bgr_image=pass1_bgr_image,
+            pass2_bottom_upside_down_bgr_image=pass2_bgr_image,
+            resolution_dpi=resolution_dpi,
+            enable_phase_correlation=True,
+        )
+
+        if output_format == "pdf":
+            save_legal_stitch_result_to_pdf(stitch_result, target_output_path)
+        else:
+            rgb_composite: np.ndarray = cv2.cvtColor(stitch_result.stitched_bgr_image, cv2.COLOR_BGR2RGB)
+            pil_composite: Image.Image = Image.fromarray(rgb_composite)
+            pil_composite.save(target_output_path, "PNG", dpi=(float(resolution_dpi), float(resolution_dpi)))
+
+        # Clean up scratch files
+        if pass1_temporary_path.exists():
+            pass1_temporary_path.unlink()
+        if pass2_temporary_path.exists():
+            pass2_temporary_path.unlink()
+        if temporary_scratch_directory.exists() and not any(temporary_scratch_directory.iterdir()):
+            temporary_scratch_directory.rmdir()
+
+        if enable_ipc_mode:
+            completed_payload: str = json.dumps(
+                {"event": "completed", "output_path": str(target_output_path)}
+            )
+            print(completed_payload, flush=True)
+        else:
+            print(
+                f"[Success] Stitched US Legal Document: {target_output_path} "
+                f"({stitch_result.stitched_bgr_image.shape[1]}x{stitch_result.stitched_bgr_image.shape[0]} px @ {resolution_dpi} DPI, "
+                f"Registration confidence: {stitch_result.correlation_confidence * 100.0:.1f}%)"
+            )
+    except Exception as acquisition_error:
+        if enable_ipc_mode:
+            error_payload: str = json.dumps(
+                {"event": "error", "message": str(acquisition_error)}
+            )
+            print(error_payload, flush=True)
+        else:
+            print(f"[Error] Legal two-pass stitching failed: {acquisition_error}", file=sys.stderr)
 
 
 def main() -> None:
@@ -1022,6 +1253,8 @@ def main() -> None:
         handle_card_command(scanner_manager, arguments)
     elif arguments.command == "booklet":
         handle_booklet_command(scanner_manager, arguments)
+    elif arguments.command == "legal-stitch":
+        handle_legal_stitch_command(scanner_manager, arguments)
 
 
 if __name__ == "__main__":
