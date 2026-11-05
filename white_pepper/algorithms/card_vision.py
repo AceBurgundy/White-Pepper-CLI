@@ -281,6 +281,16 @@ def extract_and_deskew_id_card(
         full_height = swapped_height
         box_angle = box_angle + 90.0
 
+    width_deviation_ratio: float = (
+        abs(full_width - float(target_width_pixels)) / float(max(1, target_width_pixels))
+    )
+    if width_deviation_ratio > 0.08:
+        print(
+            f"  [Diagnostic] Detected card contour width ({full_width:.0f} px) differs from "
+            f"expected ID-1 width ({target_width_pixels} px at {resolution_dpi} DPI) by "
+            f"{width_deviation_ratio * 100.0:.1f}%."
+        )
+
     rotation_matrix: np.ndarray = cv2.getRotationMatrix2D(
         (full_horizontal_center, full_vertical_center),
         box_angle,
