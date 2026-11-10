@@ -1,0 +1,49 @@
+name: Release CLI Engine
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python Build Dependencies
+        run: |
+          python -m pip install --upgrade pip build wheel
+          pip install -r requirements.txt
+
+      - name: Build Python Distribution Wheels
+        run: python -m build
+
+      - name: Compile Inno Setup CLI Installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\white_pepper_cli_setup.iss
+
+      - name: Package Portable CLI ZIP
+        run: |
+          $CliItems = @("bin", "white_pepper", "scan_cli.py", "process_cli.py", "diagnostics_cli.py", "scan_legal_two_pass.py", "requirements.txt", "README.md", "LICENSE.md")
+          Compress-Archive -Path $CliItems -DestinationPath "installer\output\WhitePepper-CLI-Portable.zip" -Force
+
+      - name: Publish GitHub Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/output/WhitePepper-CLI-Setup-*.exe
+            installer/output/WhitePepper-CLI-Portable.zip
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
