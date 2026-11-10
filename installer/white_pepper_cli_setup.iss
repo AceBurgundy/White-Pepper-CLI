@@ -26,6 +26,8 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+SetupIconFile=app_icon.ico
+UninstallDisplayIcon={app}\installer\app_icon.ico
 UninstallDisplayName={#MyAppName}
 CloseApplications=yes
 RestartApplications=no
@@ -43,7 +45,8 @@ Source: "..\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createalls
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}\bin"; Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}\bin'))
 
 [Icons]
-Name: "{group}\Command Prompt with White Pepper CLI"; Filename: "{cmd}"; Parameters: "/K set ""PATH={app}\bin;%PATH%"" & title White Pepper CLI"
+Name: "{group}\Command Prompt with White Pepper CLI"; Filename: "{cmd}"; Parameters: "/K set ""PATH={app}\bin;%PATH%"" & title White Pepper CLI"; IconFilename: "{app}\installer\app_icon.ico"
+Name: "{group}\White Pepper CLI Documentation"; Filename: "{app}\documentation\index.html"; IconFilename: "{app}\installer\app_icon.ico"; Flags: createonlyiffileexists
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 
 [UninstallDelete]
