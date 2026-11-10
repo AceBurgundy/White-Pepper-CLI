@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/pdf-compilation-and-export.js"
       { "icon_name": "aspect_ratio", "badge_label": "4 Fit Modes" },
       { "icon_name": "auto_awesome", "badge_label": "Automatic DPI Detection" }
     ],
-    "banner_image": { "image_path": "assets/scale.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Fit Modes",
-      "mockup_options": [
-        "1. contain (Uniform Aspect Ratio Fit)",
-        "2. fill (Uniform Crop to Fill Page)",
-        "3. original (1:1 Physical Print Size)"
-      ],
-      "mockup_action_buttons": ["Fit Modes", "Metadata"]
-    }
+    "banner_image": { "image_path": "assets/pdf_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/pdf_banner.png", "shrink": false }
   },
   "tab_list": [
     {

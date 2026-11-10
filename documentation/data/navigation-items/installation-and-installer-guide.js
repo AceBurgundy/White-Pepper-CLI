@@ -14,16 +14,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/installation-and-installer-gui
       { "icon_name": "delete_forever", "badge_label": "Clean Uninstaller" },
       { "icon_name": "tune", "badge_label": "PATH Integration" }
     ],
-    "banner_image": { "image_path": "assets/input.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Setup Wizard Steps",
-      "mockup_options": [
-        "1. Select Install Scope (User vs Machine)",
-        "2. Choose Custom Destination Directory",
-        "3. Optional Desktop & PATH Shortcuts"
-      ],
-      "mockup_action_buttons": ["Install", "Cancel"]
-    }
+    "banner_image": { "image_path": "assets/installer_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/installer_banner.png", "shrink": false }
   },
   "tab_list": [
     {

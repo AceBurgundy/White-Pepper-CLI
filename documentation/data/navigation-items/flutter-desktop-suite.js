@@ -14,16 +14,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/flutter-desktop-suite.js"] = {
       { "icon_name": "touch_app", "badge_label": "Contoured Pea Pod" },
       { "icon_name": "view_in_ar", "badge_label": "Platen Preview" }
     ],
-    "banner_image": { "image_path": "assets/prompt.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "UI Component Stack",
-      "mockup_options": [
-        "1. DashboardScreen (Sidebar & 2x4 Grid)",
-        "2. OptionsScreen (Pea Pod & Drawer)",
-        "3. InstructionsScreen (Wavy Split View)"
-      ],
-      "mockup_action_buttons": ["Screens", "Tokens"]
-    }
+    "banner_image": { "image_path": "assets/desktop_suite_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/desktop_suite_banner.png", "shrink": false }
   },
   "tab_list": [
     {

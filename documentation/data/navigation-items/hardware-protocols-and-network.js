@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/hardware-protocols-and-network
       { "icon_name": "bedtime", "badge_label": "Radio Sleep Wake Retry" },
       { "icon_name": "usb", "badge_label": "WIA 2.0 COM Bridge" }
     ],
-    "banner_image": { "image_path": "assets/input.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Network Flow",
-      "mockup_options": [
-        "1. GET /eSCL/ScannerStatus (Probe)",
-        "2. POST /eSCL/ScanJobs (XML Settings)",
-        "3. GET /NextDocument (Raster Stream)"
-      ],
-      "mockup_action_buttons": ["Protocols", "Diagnostics"]
-    }
+    "banner_image": { "image_path": "assets/hardware_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/hardware_banner.png", "shrink": false }
   },
   "tab_list": [
     {

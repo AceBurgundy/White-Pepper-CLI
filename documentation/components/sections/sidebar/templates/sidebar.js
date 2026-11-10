@@ -114,12 +114,12 @@ export class Sidebar extends Component {
           class="sidebar__branding"
           role="button"
           tabindex="0"
-          aria-label="Navigate to Material Dialogs Dashboard"
+          aria-label="Navigate to White Pepper Dashboard"
           onclick=${handleBrandClick}
           onkeydown=${handleBrandKeyDown}
         >
-          <img class="sidebar__branding-logo" src="./assets/icon.png" alt="Material Dialogs Icon" />
-          <span class="sidebar__branding-title">Material Dialogs</span>
+          <img class="sidebar__branding-logo" src="./assets/icon.png" alt="White Pepper Icon" />
+          <span class="sidebar__branding-title">White Pepper</span>
         </div>
         <div class="sidebar__header">
           ${searchPillComponent}

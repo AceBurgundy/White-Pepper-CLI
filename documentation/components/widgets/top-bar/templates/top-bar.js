@@ -14,11 +14,11 @@ css(import.meta, ["../styles/top-bar.css"]);
 export class TopBar extends Component {
   /**
    * @param {Object} [configuration={}]
-   * @param {string} [configuration.title="Material Dialogs"] - Title displayed in the top bar.
+   * @param {string} [configuration.title="White Pepper"] - Title displayed in the top bar.
    * @param {function(): void} [configuration.onMenuToggle] - Callback invoked when the burger menu button is clicked.
    * @param {function(): void} [configuration.onBrandClick] - Callback invoked when the brand title is clicked.
    */
-  constructor({ title = "Material Dialogs", onMenuToggle, onBrandClick } = {}) {
+  constructor({ title = "White Pepper", onMenuToggle, onBrandClick } = {}) {
     super();
 
     /** @type {string} */
@@ -124,7 +124,7 @@ export class TopBar extends Component {
             class="top-bar__title"
             role="button"
             tabindex="0"
-            aria-label="Navigate to Material Dialogs Dashboard"
+            aria-label="Navigate to White Pepper Dashboard"
             onclick=${handleBrandClick}
             onkeydown=${handleBrandKeyDown}
           >${this.title}</div>

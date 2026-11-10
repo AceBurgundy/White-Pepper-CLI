@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/card-and-booklet-vision.js"] =
       { "icon_name": "call_merge", "badge_label": "Two-Pass Legal Stitch" },
       { "icon_name": "auto_stories", "badge_label": "Booklet Page Slicing" }
     ],
-    "banner_image": { "image_path": "assets/selection.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Vision Algorithms",
-      "mockup_options": [
-        "1. Perspective Homography Rectification",
-        "2. Safety Inset & R3.18mm Corner Mask",
-        "3. Template Match Overlap Registration"
-      ],
-      "mockup_action_buttons": ["Card Vision", "Legal Stitch"]
-    }
+    "banner_image": { "image_path": "assets/vision_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/vision_banner.png", "shrink": false }
   },
   "tab_list": [
     {

@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/presets-and-dpi-calibration.js
       { "icon_name": "hd", "badge_label": "75 to 1200 DPI" },
       { "icon_name": "straighten", "badge_label": "Physical Platen Clamping" }
     ],
-    "banner_image": { "image_path": "assets/scale.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Paper Presets",
-      "mockup_options": [
-        "1. A4, Letter, Legal, A5, A6, B5",
-        "2. Photo 4x6, 5x7, ID-Card, Receipt",
-        "3. Custom Millimetre & Inch Offsets"
-      ],
-      "mockup_action_buttons": ["Presets", "Matrix"]
-    }
+    "banner_image": { "image_path": "assets/presets_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/presets_banner.png", "shrink": false }
   },
   "tab_list": [
     {

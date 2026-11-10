@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/headless-cli-engine.js"] = {
       { "icon_name": "settings_input_component", "badge_label": "4 CLI Utilities" },
       { "icon_name": "sync_alt", "badge_label": "JSON IPC Protocol" }
     ],
-    "banner_image": { "image_path": "assets/icon.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "CLI Subcommands",
-      "mockup_options": [
-        "1. scan_cli.py (flatbed, card, booklet)",
-        "2. process_cli.py (compile-pdf, cards)",
-        "3. diagnostics_cli.py (--json)"
-      ],
-      "mockup_action_buttons": ["scan_cli", "process_cli"]
-    }
+    "banner_image": { "image_path": "assets/cli_engine_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/cli_engine_banner.png", "shrink": false }
   },
   "tab_list": [
     {

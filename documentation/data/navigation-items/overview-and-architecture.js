@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/overview-and-architecture.js"]
       { "icon_name": "terminal", "badge_label": "Subprocess CLI IPC" },
       { "icon_name": "speed", "badge_label": "Zero IPC Bottlenecks" }
     ],
-    "banner_image": { "image_path": "assets/icon.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Architecture Highlights",
-      "mockup_options": [
-        "1. Complete process isolation via Subprocess",
-        "2. Multi-protocol fallback: eSCL -> WIA -> PowerShell",
-        "3. Live platen clamping & DPI metadata integrity"
-      ],
-      "mockup_action_buttons": ["Docs", "Explore"]
-    }
+    "banner_image": { "image_path": "assets/architecture_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/architecture_banner.png", "shrink": false }
   },
   "tab_list": [
     {

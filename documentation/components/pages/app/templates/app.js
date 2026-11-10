@@ -84,7 +84,7 @@ export class App extends Component {
 
     /** @type {TopBar} */
     this.topBarComponent = new TopBar({
-      title: "Material Dialogs",
+      title: "White Pepper",
       onMenuToggle: () => {
         this.toggleMobileDrawer();
       },
@@ -489,7 +489,7 @@ export class App extends Component {
       const footerData = await this.fetchNavigationItemData(this.footerPath).catch(() => ({}));
       /** @type {Footer} */
       const footerComponent = new Footer({
-        brandName: footerData.brand_name || "Material Design",
+        brandName: footerData.brand_name || "White Pepper",
         brandDescription: footerData.brand_description || "",
         socialLinks: footerData.social_links || [],
         columns: footerData.columns || [],

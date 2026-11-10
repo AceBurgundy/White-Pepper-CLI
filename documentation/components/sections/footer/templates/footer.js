@@ -37,7 +37,7 @@ css(import.meta, ["../styles/footer.css"]);
 export class Footer extends Component {
   /**
    * @param {Object} [configuration]
-   * @param {string} [configuration.brandName="Material Design"] - Main brand title.
+   * @param {string} [configuration.brandName="White Pepper"] - Main brand title.
    * @param {string} [configuration.brandDescription=""] - Brand narrative text.
    * @param {Array<FooterSocialLink>} [configuration.socialLinks=[]] - Social platform links.
    * @param {Array<FooterColumn>} [configuration.columns=[]] - Resource link columns.
@@ -45,7 +45,7 @@ export class Footer extends Component {
    * @param {string} [configuration.copyrightText=""] - License and copyright statement.
    */
   constructor({
-    brandName = "Material Design",
+    brandName = "White Pepper",
     brandDescription = "",
     socialLinks = [],
     columns = [],

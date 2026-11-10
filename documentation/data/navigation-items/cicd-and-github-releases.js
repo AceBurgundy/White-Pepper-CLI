@@ -13,16 +13,8 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/cicd-and-github-releases.js"] 
       { "icon_name": "sell", "badge_label": "Automated Tagging" },
       { "icon_name": "archive", "badge_label": "Dual Artifacts" }
     ],
-    "banner_image": { "image_path": "assets/selection.png", "shrink": false },
-    "mockup_card": {
-      "mockup_title": "Release Workflow",
-      "mockup_options": [
-        "1. git tag -a v1.3.0 -m 'Release v1.3.0'",
-        "2. GitHub Actions runs test & build",
-        "3. Inno Setup compiles release .exe"
-      ],
-      "mockup_action_buttons": ["Workflow", "Releases"]
-    }
+    "banner_image": { "image_path": "assets/cicd_banner.png", "shrink": false },
+    "mockup_card": { "image_path": "assets/cicd_banner.png", "shrink": false }
   },
   "tab_list": [
     {
