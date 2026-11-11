@@ -78,25 +78,25 @@ function computeDeterministicHash(inputString) {
 }
 
 /**
- * Fetches seeded placeholder images from Lorem Picsum (Fastly CDN).
- * URL format: https://picsum.photos/seed/{seed}/{width}/{height}
- *
- * @param {number|string|null} [seed=null] - Seed value for deterministic images.
- * @returns {string} Absolute image URL.
+ * Fallback static asset banner path representing the White Pepper application suite.
+ * Replaces external Lorem Picsum CDN requests with localized application assets.
  */
-export function getAbstractImageUrl(seed = null) {
-  /** @type {number} */
-  const resolvedSeed = seed !== null && seed !== undefined && !Number.isNaN(Number(seed))
-    ? Number(seed)
-    : Math.floor(Math.random() * 1000) + 1;
+const DEFAULT_FALLBACK_BANNER = "assets/icon.png";
 
-  return `https://picsum.photos/seed/${resolvedSeed}/800/400`;
+/**
+ * Returns a fallback image path within the documentation assets.
+ *
+ * @param {number|string|null} [_seed=null] - Unused legacy seed.
+ * @returns {string} Relative asset image URL.
+ */
+export function getAbstractImageUrl(_seed = null) {
+  return DEFAULT_FALLBACK_BANNER;
 }
 
 /**
  * Retrieves a cached image URL for a card, ensuring identical images across page reloads.
  * If an explicit image source is provided, it is returned directly.
- * Otherwise, resolves and caches a deterministic abstract image URL keyed by the card's identifier.
+ * Otherwise, resolves to localized White Pepper application assets keyed by the card's identifier.
  *
  * @param {string} cardIdentifier - Unique card key (e.g. title, link, or label).
  * @param {string} [explicitSource=""] - Optional explicit image source path or URL.
@@ -107,31 +107,36 @@ export function getCachedCardImageUrl(cardIdentifier, explicitSource = "") {
     return explicitSource;
   }
 
-  const lookupKey = (cardIdentifier || "").trim();
-  if (!lookupKey) {
-    return getAbstractImageUrl(1);
+  const lookupKey = (cardIdentifier || "").toLowerCase();
+
+  if (lookupKey.includes("desktop") || lookupKey.includes("flutter") || lookupKey.includes("workstation")) {
+    return "assets/preview_desktop_ui.png";
+  }
+  if (lookupKey.includes("cli") || lookupKey.includes("headless") || lookupKey.includes("engine") || lookupKey.includes("command")) {
+    return "assets/preview_cli_engine.png";
+  }
+  if (lookupKey.includes("install") || lookupKey.includes("setup") || lookupKey.includes("wizard")) {
+    return "assets/preview_installer.png";
+  }
+  if (lookupKey.includes("hardware") || lookupKey.includes("network") || lookupKey.includes("escl") || lookupKey.includes("wia")) {
+    return "assets/hardware_banner.png";
+  }
+  if (lookupKey.includes("preset") || lookupKey.includes("dpi") || lookupKey.includes("paper")) {
+    return "assets/presets_banner.png";
+  }
+  if (lookupKey.includes("vision") || lookupKey.includes("card") || lookupKey.includes("booklet") || lookupKey.includes("crop")) {
+    return "assets/vision_banner.png";
+  }
+  if (lookupKey.includes("pdf") || lookupKey.includes("document") || lookupKey.includes("export")) {
+    return "assets/pdf_banner.png";
+  }
+  if (lookupKey.includes("cicd") || lookupKey.includes("github") || lookupKey.includes("release")) {
+    return "assets/cicd_banner.png";
+  }
+  if (lookupKey.includes("overview") || lookupKey.includes("architecture")) {
+    return "assets/architecture_banner.png";
   }
 
-  // Check in-memory cache first
-  if (inMemoryImageCache.has(lookupKey)) {
-    return /** @type {string} */ (inMemoryImageCache.get(lookupKey));
-  }
-
-  // Compute deterministic seed based on string hash
-  const hashValue = computeDeterministicHash(lookupKey);
-  const deterministicSeed = (hashValue % 1000) + 1;
-  const generatedImageUrl = getAbstractImageUrl(deterministicSeed);
-
-  // Store in cache and persist
-  inMemoryImageCache.set(lookupKey, generatedImageUrl);
-  persistCacheToStorage();
-
-  // Pre-warm browser image cache
-  if (typeof window !== "undefined" && typeof Image !== "undefined") {
-    const preloaderImage = new Image();
-    preloaderImage.src = generatedImageUrl;
-  }
-
-  return generatedImageUrl;
+  return DEFAULT_FALLBACK_BANNER;
 }
 

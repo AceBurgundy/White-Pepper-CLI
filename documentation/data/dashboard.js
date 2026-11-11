@@ -34,18 +34,21 @@ window.DOCUMENTATION_ITEMS["data/dashboard.js"] = {
               "title": "4:3 Workstation Desktop UI",
               "description": "Minimalist onyx layout featuring 8 workflow presets, live platen preview canvas, contoured Pea Pod parameter drawer, and split wavy instructions.",
               "label": "Flutter Desktop",
+              "image_path": "assets/preview_desktop_ui.png",
               "link": "data/navigation-items/flutter-desktop-suite.js"
             },
             {
               "title": "Headless CLI Scanning Engine",
               "description": "Robust Python CLI tools supporting flatbed, booklet batch, ID card extraction, legal two-pass stitch, and virtual-paper PDF compilation.",
               "label": "CLI Architecture",
+              "image_path": "assets/preview_cli_engine.png",
               "link": "data/navigation-items/headless-cli-engine.js"
             },
             {
               "title": "Windows Setup Installers",
               "description": "Customizable Inno Setup installers with destination folder selection, PATH registration, Desktop shortcuts, and clean Windows uninstallation.",
               "label": "Packaging & Setup",
+              "image_path": "assets/preview_installer.png",
               "link": "data/navigation-items/installation-and-installer-guide.js"
             }
           ]
@@ -60,30 +63,35 @@ window.DOCUMENTATION_ITEMS["data/dashboard.js"] = {
               "title": "Dual Protocol Communication",
               "description": "Lossless eSCL wireless XML streaming over HTTP port 8080 with automatic fallback to USB Windows Image Acquisition (WIA).",
               "label": "Hardware",
+              "image_path": "assets/hardware_banner.png",
               "link": "data/navigation-items/hardware-protocols-and-network.js"
             },
             {
               "title": "14 Paper Presets & Optical DPI",
               "description": "Discrete optical resolutions from 75 to 1200 DPI with 8.50 x 11.693 physical platen bounds and pixel matrix computation.",
               "label": "Geometry",
+              "image_path": "assets/presets_banner.png",
               "link": "data/navigation-items/presets-and-dpi-calibration.js"
             },
             {
               "title": "ID-1 Card Vision & Deskew",
               "description": "Canny edge detection, perspective homography transform, safety insets, corner rounding, and alpha compositing.",
               "label": "Computer Vision",
+              "image_path": "assets/vision_banner.png",
               "link": "data/navigation-items/card-and-booklet-vision.js"
             },
             {
               "title": "Virtual-Paper PDF Engine",
               "description": "Pillow and ReportLab multi-page document compiler with embedded DPI resolution metadata and flexible page placement.",
               "label": "Document Engine",
+              "image_path": "assets/pdf_banner.png",
               "link": "data/navigation-items/pdf-compilation-and-export.js"
             },
             {
               "title": "CI/CD & GitHub Releases",
               "description": "Automated GitHub Actions workflows building release binaries and publishing Inno Setup installers on tag pushes.",
               "label": "DevOps",
+              "image_path": "assets/cicd_banner.png",
               "link": "data/navigation-items/cicd-and-github-releases.js"
             }
           ]
@@ -98,12 +106,14 @@ window.DOCUMENTATION_ITEMS["data/dashboard.js"] = {
               "title": "Installation & Installer Wizard",
               "description": "Download WhitePepper-Desktop-Setup-v1.3.0.exe or CLI installer with step-by-step setup walkthrough.",
               "label": "Setup Guide",
+              "image_path": "assets/installer_banner.png",
               "link": "data/navigation-items/installation-and-installer-guide.js"
             },
             {
               "title": "Overview & Architecture Tenets",
               "description": "Explore the isolation model, IPC protocol, and AST-decomposed git repository structure.",
               "label": "Architecture",
+              "image_path": "assets/architecture_banner.png",
               "link": "data/navigation-items/overview-and-architecture.js"
             }
           ]
