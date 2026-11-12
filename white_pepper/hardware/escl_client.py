@@ -22,9 +22,15 @@ from __future__ import annotations
 # TCP = Transmission Control Protocol
 # URL = Uniform Resource Locator
 # XML = Extensible Markup Language
+# ARP = Address Resolution Protocol
+# IPv4 = Internet Protocol Version 4
+# UUID = Universally Unique Identifier
 
 import io
 from pathlib import Path
+import re
+import socket
+import subprocess
 import time
 from typing import Optional
 import urllib.error
@@ -858,3 +864,130 @@ class EsclClient:
             play_completion_beep()
 
         return saved_path
+
+
+def discover_network_escl_scanners(
+    primary_host: str = DEFAULT_ESCL_IP,
+    primary_port: int = DEFAULT_ESCL_PORT,
+    timeout_seconds: float = 2.5,
+) -> list[dict[str, object]]:
+    """
+    Discover active wireless eSCL network scanners across the local subnet.
+
+    Parameters
+    ----------
+    primary_host : str, optional
+        Primary candidate IPv4 address or hostname, by default ``DEFAULT_ESCL_IP``.
+    primary_port : int, optional
+        Primary candidate HTTP TCP port, by default ``DEFAULT_ESCL_PORT``.
+    timeout_seconds : float, optional
+        Probe timeout per candidate endpoint in seconds, by default ``2.5``.
+
+    Returns
+    -------
+    list[dict[str, object]]
+        List of discovered eSCL scanner descriptors.
+    """
+    discovered_endpoints: list[dict[str, object]] = []
+    seen_host_addresses: set[str] = set()
+
+    candidate_endpoints: list[tuple[str, int]] = [(primary_host, primary_port)]
+    if primary_port != 80:
+        candidate_endpoints.append((primary_host, 80))
+
+    try:
+        arp_process: subprocess.CompletedProcess[str] = subprocess.run(
+            ["arp", "-a"],
+            capture_output=True,
+            text=True,
+            timeout=1.5,
+            check=False,
+        )
+        arp_output_text: str = arp_process.stdout
+        matched_ipv4_addresses: list[str] = re.findall(
+            r"((?:192\.168|10\.|172\.(?:1[6-9]|2[0-9]|3[01]))\.\d+\.\d+)",
+            arp_output_text,
+        )
+        candidate_address: str
+        for candidate_address in matched_ipv4_addresses:
+            last_segment: str = candidate_address.split(".")[-1]
+            if last_segment in ("1", "255"):
+                continue
+            if candidate_address not in seen_host_addresses and candidate_address != primary_host:
+                candidate_endpoints.append((candidate_address, 8080))
+                candidate_endpoints.append((candidate_address, 80))
+    except Exception:
+        pass
+
+    endpoint_tuple: tuple[str, int]
+    for endpoint_tuple in candidate_endpoints:
+        candidate_host: str = endpoint_tuple[0]
+        candidate_port: int = endpoint_tuple[1]
+        host_port_key: str = f"{candidate_host}:{candidate_port}"
+        if host_port_key in seen_host_addresses:
+            continue
+        seen_host_addresses.add(host_port_key)
+
+        socket_probe: Optional[socket.socket] = None
+        is_port_open: bool = False
+        try:
+            socket_probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            socket_probe.settimeout(0.35 if candidate_host != primary_host else 1.0)
+            socket_result: int = socket_probe.connect_ex((candidate_host, candidate_port))
+            is_port_open = (socket_result == 0)
+        except Exception:
+            is_port_open = False
+        finally:
+            if socket_probe is not None:
+                try:
+                    socket_probe.close()
+                except Exception:
+                    pass
+
+        if not is_port_open:
+            continue
+
+        probe_client: EsclClient = EsclClient(host_address=candidate_host, port_number=candidate_port)
+        if not probe_client.is_reachable(probe_timeout_seconds=0.8):
+            continue
+
+        friendly_name: str = "Wireless Network Scanner"
+        unique_device_identifier: str = f"escl:{candidate_host}_{candidate_port}"
+
+        try:
+            capabilities_xml_text: str = probe_client.query_capabilities(timeout_seconds=1.2)
+            model_match: Optional[re.Match[str]] = re.search(
+                r"<pwg:MakeAndModel>(.*?)</pwg:MakeAndModel>",
+                capabilities_xml_text,
+            )
+            if model_match is not None:
+                parsed_model_name: str = model_match.group(1).strip()
+                if parsed_model_name and parsed_model_name.lower() not in ("xxxx", "unknown"):
+                    friendly_name = parsed_model_name
+                elif parsed_model_name.lower() == "xxxx":
+                    friendly_name = "HP DeskJet Wireless Scanner"
+
+            uuid_match: Optional[re.Match[str]] = re.search(
+                r"<scan:UUID>(.*?)</scan:UUID>",
+                capabilities_xml_text,
+            )
+            if uuid_match is not None:
+                extracted_uuid: str = uuid_match.group(1).strip()
+                if extracted_uuid:
+                    unique_device_identifier = f"escl:{extracted_uuid}"
+        except Exception:
+            pass
+
+        descriptor: dict[str, object] = {
+            "id": unique_device_identifier,
+            "name": friendly_name,
+            "transport": "wifi",
+            "host": candidate_host,
+            "port": candidate_port,
+            "device_id": "",
+            "reachable": True,
+        }
+        discovered_endpoints.append(descriptor)
+
+    return discovered_endpoints
+

@@ -208,6 +208,10 @@ class ScannerManager:
             )
 
         backend_choice: str = configuration.backend_mode.strip().lower()
+        if configuration.escl_host:
+            self.escl_client.host_address = configuration.escl_host
+            self.escl_client.port_number = configuration.escl_port
+
         allow_escl: bool = backend_choice in ("auto", "escl") and (
             configuration.prefer_escl or backend_choice == "escl"
         )
@@ -265,6 +269,7 @@ class ScannerManager:
                     jpeg_quality=configuration.jpeg_quality,
                     enable_beep=configuration.enable_beep,
                     resolved_region=resolved_region,
+                    device_id=configuration.wia_device_id,
                 )
                 return saved_wia_path
             except Exception as wia_error:
@@ -290,6 +295,7 @@ class ScannerManager:
                 jpeg_quality=configuration.jpeg_quality,
                 enable_beep=configuration.enable_beep,
                 resolved_region=resolved_region,
+                device_id=configuration.wia_device_id,
             )
             return saved_ps_path
 

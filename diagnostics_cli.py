@@ -27,7 +27,13 @@ from pathlib import Path
 import re
 from typing import Optional, TypedDict
 
-from white_pepper.hardware.escl_client import DEFAULT_ESCL_IP, DEFAULT_ESCL_PORT, EsclClient
+from white_pepper.hardware.escl_client import (
+    DEFAULT_ESCL_IP,
+    DEFAULT_ESCL_PORT,
+    EsclClient,
+    discover_network_escl_scanners,
+)
+from white_pepper.hardware.wia_client import enumerate_wia_scanners
 
 
 class EsclDiagnosticSummary(TypedDict):
@@ -58,12 +64,25 @@ class WiaDeviceSummary(TypedDict):
     type_label: str
 
 
+class DiscoveredScannerDescriptor(TypedDict):
+    """Structured descriptor for a discovered Wi-Fi or USB flatbed scanner."""
+
+    id: str
+    name: str
+    transport: str
+    host: str
+    port: int
+    device_id: str
+    reachable: bool
+
+
 class FullDiagnosticsReport(TypedDict):
     """Combined eSCL and WIA diagnostic report structure."""
 
     escl: EsclDiagnosticSummary
     wia_devices: list[WiaDeviceSummary]
     wia_error: str
+    discovered_scanners: list[DiscoveredScannerDescriptor]
 
 
 def probe_escl_scanner(
@@ -301,10 +320,90 @@ def collect_diagnostics_report(
         quiet=quiet,
     )
     wia_result: tuple[list[WiaDeviceSummary], str] = probe_wia_devices(quiet=quiet)
+
+    discovered_scanners: list[DiscoveredScannerDescriptor] = []
+    seen_identifiers: set[str] = set()
+
+    if escl_summary["reachable"]:
+        scanner_model_name: str = escl_summary["make_and_model"].strip()
+        if not scanner_model_name or scanner_model_name.lower() in ("xxxx", "unknown"):
+            scanner_model_name = "HP DeskJet Wireless Scanner"
+
+        primary_scanner_identifier: str = (
+            f"escl:{escl_summary['uuid']}" if escl_summary["uuid"] else f"escl:{host}_{port}"
+        )
+        discovered_scanners.append(
+            {
+                "id": primary_scanner_identifier,
+                "name": scanner_model_name,
+                "transport": "wifi",
+                "host": host,
+                "port": port,
+                "device_id": "",
+                "reachable": True,
+            }
+        )
+        seen_identifiers.add(primary_scanner_identifier)
+
+    network_escl_scanners: list[dict[str, object]] = discover_network_escl_scanners(
+        primary_host=host,
+        primary_port=port,
+        timeout_seconds=min(timeout_seconds, 1.5),
+    )
+    network_scanner_entry: dict[str, object]
+    for network_scanner_entry in network_escl_scanners:
+        scanner_identifier: str = str(network_scanner_entry.get("id", ""))
+        if scanner_identifier not in seen_identifiers:
+            seen_identifiers.add(scanner_identifier)
+            discovered_scanners.append(
+                {
+                    "id": scanner_identifier,
+                    "name": str(network_scanner_entry.get("name", "Wireless Network Scanner")),
+                    "transport": "wifi",
+                    "host": str(network_scanner_entry.get("host", "")),
+                    "port": int(network_scanner_entry.get("port", 8080)),
+                    "device_id": "",
+                    "reachable": True,
+                }
+            )
+
+    wia_device_item: WiaDeviceSummary
+    for wia_device_item in wia_result[0]:
+        if wia_device_item["device_type"] == 1:
+            wia_identifier: str = f"wia:{wia_device_item['device_id']}"
+            if wia_identifier not in seen_identifiers:
+                seen_identifiers.add(wia_identifier)
+                discovered_scanners.append(
+                    {
+                        "id": wia_identifier,
+                        "name": wia_device_item["name"],
+                        "transport": "usb",
+                        "host": "",
+                        "port": 0,
+                        "device_id": wia_device_item["device_id"],
+                        "reachable": True,
+                    }
+                )
+
+    if not quiet:
+        print("\n3. Discovered Scanners Summary (Multi-Device Auto-Connect)")
+        if discovered_scanners:
+            scanner_index: int
+            scanner_record: DiscoveredScannerDescriptor
+            for scanner_index, scanner_record in enumerate(discovered_scanners, start=1):
+                transport_tag: str = "Wi-Fi" if scanner_record["transport"] == "wifi" else "USB"
+                print(
+                    f"    [{scanner_index}] {scanner_record['name']} "
+                    f"({transport_tag}) — ID: {scanner_record['id']}"
+                )
+        else:
+            print("    No online or connected scanners detected.")
+
     report: FullDiagnosticsReport = {
         "escl": escl_summary,
         "wia_devices": wia_result[0],
         "wia_error": wia_result[1],
+        "discovered_scanners": discovered_scanners,
     }
     return report
 

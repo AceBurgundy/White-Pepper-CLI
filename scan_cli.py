@@ -159,6 +159,13 @@ def _attach_shared_connection_flags(
         default=default_boolean_flag,
         help="Mute acoustic completion beeps during scanning.",
     )
+    target_parser.add_argument(
+        "--device-id",
+        dest="device_id",
+        type=str,
+        default=argparse.SUPPRESS if use_suppress_defaults else None,
+        help="Optional Windows Image Acquisition (WIA) hardware DeviceID to target a specific USB scanner.",
+    )
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -750,6 +757,7 @@ def resolve_flatbed_scan_configuration(arguments: argparse.Namespace) -> ScanCon
         backend_mode=effective_backend,
         escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
         escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+        wia_device_id=getattr(arguments, "device_id", None),
     )
     # Validate region geometry eagerly so invalid custom dimensions fail fast
     configuration.resolve_region()

@@ -214,6 +214,7 @@ class WiaClient:
         jpeg_quality: int = 95,
         enable_beep: bool = True,
         resolved_region: Optional[ResolvedScanRegion] = None,
+        device_id: Optional[str] = None,
     ) -> Path:
         """
         Acquire a scan over local Windows WIA COM with full region and format support.
@@ -247,6 +248,8 @@ class WiaClient:
             Play acoustic completion notification when ``True``, by default ``True``.
         resolved_region : Optional[ResolvedScanRegion], optional
             Resolved physical platen bounding box, by default ``None``.
+        device_id : Optional[str], optional
+            Explicit WIA hardware DeviceID to target, by default ``None``.
 
         Returns
         -------
@@ -273,8 +276,18 @@ class WiaClient:
         for device_info in device_info_collection:  # type: ignore[attr-defined]
             device_type: int = int(getattr(device_info, "Type", 0))
             if device_type == WIA_DEVICE_TYPE_SCANNER:
-                scanner_device_info = device_info
-                break
+                current_identifier: str = str(getattr(device_info, "DeviceID", ""))
+                if device_id is not None and current_identifier == device_id:
+                    scanner_device_info = device_info
+                    break
+                if scanner_device_info is None and device_id is None:
+                    scanner_device_info = device_info
+
+        if scanner_device_info is None and device_info_collection:
+            for device_info in device_info_collection:  # type: ignore[attr-defined]
+                if int(getattr(device_info, "Type", 0)) == WIA_DEVICE_TYPE_SCANNER:
+                    scanner_device_info = device_info
+                    break
 
         if scanner_device_info is None:
             raise RuntimeError("No local USB WIA scanner device found connected.")
@@ -414,3 +427,46 @@ class WiaClient:
             play_completion_beep()
 
         return output_file_path
+
+
+def enumerate_wia_scanners() -> list[dict[str, object]]:
+    """
+    Enumerate connected Windows Image Acquisition (WIA) USB flatbed scanners.
+
+    Returns
+    -------
+    list[dict[str, object]]
+        List of discovered WIA scanner descriptors with friendly display names.
+    """
+    discovered_scanners: list[dict[str, object]] = []
+    try:
+        import win32com.client  # type: ignore
+
+        device_manager: object = win32com.client.Dispatch("WIA.DeviceManager")
+        device_infos: object = getattr(device_manager, "DeviceInfos")
+        device_count: int = int(getattr(device_infos, "Count", 0))
+
+        device_index: int
+        for device_index in range(1, device_count + 1):
+            info_object: object = device_infos.Item(device_index)  # type: ignore[attr-defined]
+            device_type: int = int(getattr(info_object, "Type", 0))
+            if device_type == WIA_DEVICE_TYPE_SCANNER:
+                properties_object: object = getattr(info_object, "Properties")
+                name_property: object = properties_object.Item("Name")  # type: ignore[attr-defined]
+                raw_device_name: str = str(getattr(name_property, "Value", "USB Scanner"))
+                device_identifier: str = str(getattr(info_object, "DeviceID", ""))
+
+                descriptor: dict[str, object] = {
+                    "id": f"wia:{device_identifier}",
+                    "name": raw_device_name,
+                    "transport": "usb",
+                    "host": "",
+                    "port": 0,
+                    "device_id": device_identifier,
+                    "reachable": True,
+                }
+                discovered_scanners.append(descriptor)
+    except Exception:
+        pass
+    return discovered_scanners
+

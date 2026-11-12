@@ -46,6 +46,7 @@ def execute_powershell_wia_scan(
     jpeg_quality: int = 95,
     enable_beep: bool = True,
     resolved_region: Optional[ResolvedScanRegion] = None,
+    device_id: Optional[str] = None,
 ) -> Path:
     """
     Acquire a scan by invoking an out-of-process PowerShell WIA automation script.
@@ -79,6 +80,8 @@ def execute_powershell_wia_scan(
         Play acoustic completion notification when ``True``, by default ``True``.
     resolved_region : Optional[ResolvedScanRegion], optional
         Resolved physical platen bounding box, by default ``None``.
+    device_id : Optional[str], optional
+        Explicit WIA hardware DeviceID to target, by default ``None``.
 
     Returns
     -------
@@ -135,11 +138,23 @@ $relContrast = {clamped_contrast}
 
 $deviceManager = New-Object -ComObject WIA.DeviceManager
 $scannerDevice = $null
+$targetDeviceId = '{device_id if device_id else ""}'
 
-foreach ($deviceInfo in $deviceManager.DeviceInfos) {{
-    if ($deviceInfo.Type -eq 1 -or $deviceInfo.Type -eq 65535 -or $deviceInfo.Properties.Item('Name').Value -match 'scan|tank|print') {{
-        $scannerDevice = $deviceInfo.Connect()
-        break
+if ($targetDeviceId -ne '') {{
+    foreach ($deviceInfo in $deviceManager.DeviceInfos) {{
+        if ($deviceInfo.DeviceID -eq $targetDeviceId) {{
+            $scannerDevice = $deviceInfo.Connect()
+            break
+        }}
+    }}
+}}
+
+if ($null -eq $scannerDevice) {{
+    foreach ($deviceInfo in $deviceManager.DeviceInfos) {{
+        if ($deviceInfo.Type -eq 1 -or $deviceInfo.Type -eq 65535 -or $deviceInfo.Properties.Item('Name').Value -match 'scan|tank|print') {{
+            $scannerDevice = $deviceInfo.Connect()
+            break
+        }}
     }}
 }}
 

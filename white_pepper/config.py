@@ -126,6 +126,9 @@ class ScanConfiguration:
         IPv4 address or hostname of the wireless eSCL scanner.
     escl_port : int
         TCP port of the wireless eSCL scanner HTTP endpoint.
+    wia_device_id : Optional[str]
+        Explicit Windows Image Acquisition hardware DeviceID for targeting USB scanners,
+        or ``None`` for default/first scanner enumeration.
     """
 
     destination_directory: Path = Path(r"D:\Pictures\Scanned")
@@ -158,6 +161,7 @@ class ScanConfiguration:
     backend_mode: str = "auto"
     escl_host: str = "192.168.1.150"
     escl_port: int = 8080
+    wia_device_id: Optional[str] = None
 
     def effective_dpi(self) -> int:
         """
