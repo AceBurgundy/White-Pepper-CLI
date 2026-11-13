@@ -74,6 +74,8 @@ class DiscoveredScannerDescriptor(TypedDict):
     port: int
     device_id: str
     reachable: bool
+    supports_legal: bool
+    max_height_inches: float
 
 
 class FullDiagnosticsReport(TypedDict):
@@ -332,6 +334,13 @@ def collect_diagnostics_report(
         primary_scanner_identifier: str = (
             f"escl:{escl_summary['uuid']}" if escl_summary["uuid"] else f"escl:{host}_{port}"
         )
+        escl_platen_height_inches: float = (
+            round(float(escl_summary["max_height_escl_units"]) / 300.0, 3)
+            if int(escl_summary["max_height_escl_units"]) > 0
+            else 11.693
+        )
+        escl_supports_legal: bool = escl_platen_height_inches >= 13.9
+
         discovered_scanners.append(
             {
                 "id": primary_scanner_identifier,
@@ -341,6 +350,8 @@ def collect_diagnostics_report(
                 "port": port,
                 "device_id": "",
                 "reachable": True,
+                "supports_legal": escl_supports_legal,
+                "max_height_inches": escl_platen_height_inches,
             }
         )
         seen_identifiers.add(primary_scanner_identifier)
@@ -364,6 +375,8 @@ def collect_diagnostics_report(
                     "port": int(network_scanner_entry.get("port", 8080)),
                     "device_id": "",
                     "reachable": True,
+                    "supports_legal": False,
+                    "max_height_inches": 11.693,
                 }
             )
 
@@ -382,6 +395,8 @@ def collect_diagnostics_report(
                         "port": 0,
                         "device_id": wia_device_item["device_id"],
                         "reachable": True,
+                        "supports_legal": False,
+                        "max_height_inches": 11.693,
                     }
                 )
 

@@ -317,9 +317,9 @@ PAPER_SIZE_REGISTRY: dict[str, PaperSizeSpec] = {
     ),
     "id-card": PaperSizeSpec(
         key="id-card",
-        display_name="ID-1 Card Capture Box (5.0 x 5.0 in)",
-        width_millimeters=127.00,
-        height_millimeters=127.00,
+        display_name="ID-1 Card Capture Box (4.0 x 4.0 in)",
+        width_millimeters=101.60,
+        height_millimeters=101.60,
     ),
     "receipt-half": PaperSizeSpec(
         key="receipt-half",
