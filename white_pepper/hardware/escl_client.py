@@ -370,38 +370,45 @@ def decode_and_clip_escl_payload(
 
             clip_rectangle: Optional[object] = None
             exceeds_requested_box: bool = False
-            if not resolved_region.is_full_platen:
-                # Only clip if the returned PDF page is larger than the requested region
-                exceeds_requested_box = (
-                    (page_width_points - resolved_region.width_points > 2.0)
-                    or (page_height_points - resolved_region.height_points > 2.0)
-                    or (resolved_region.offset_x_points > 0.5)
-                    or (resolved_region.offset_y_points > 0.5)
+            full_platen_width_pt: float = PLATEN_MAX_WIDTH_INCHES * 72.0
+            full_platen_height_pt: float = PLATEN_MAX_HEIGHT_INCHES * 72.0
+
+            # Only clip if the PDF returned is a full platen canvas while a small sub-region was requested
+            is_sub_region_pdf: bool = (
+                not resolved_region.is_full_platen
+                and (page_width_points >= full_platen_width_pt - 5.0)
+                and (page_height_points >= full_platen_height_pt - 5.0)
+                and (
+                    resolved_region.width_points < full_platen_width_pt - 20.0
+                    or resolved_region.height_points < full_platen_height_pt - 20.0
                 )
-                if exceeds_requested_box:
-                    clip_x0: float = max(
-                        0.0,
-                        min(page_width_points - 1.0, resolved_region.offset_x_points),
-                    )
-                    clip_y0: float = max(
-                        0.0,
-                        min(page_height_points - 1.0, resolved_region.offset_y_points),
-                    )
-                    clip_x1: float = max(
-                        clip_x0 + 1.0,
-                        min(
-                            page_width_points,
-                            resolved_region.offset_x_points + resolved_region.width_points,
-                        ),
-                    )
-                    clip_y1: float = max(
-                        clip_y0 + 1.0,
-                        min(
-                            page_height_points,
-                            resolved_region.offset_y_points + resolved_region.height_points,
-                        ),
-                    )
-                    clip_rectangle = fitz.Rect(clip_x0, clip_y0, clip_x1, clip_y1)  # type: ignore[attr-defined]
+            )
+
+            if is_sub_region_pdf:
+                clip_x0: float = max(
+                    0.0,
+                    min(page_width_points - 1.0, resolved_region.offset_x_points),
+                )
+                clip_y0: float = max(
+                    0.0,
+                    min(page_height_points - 1.0, resolved_region.offset_y_points),
+                )
+                clip_x1: float = max(
+                    clip_x0 + 1.0,
+                    min(
+                        page_width_points,
+                        resolved_region.offset_x_points + resolved_region.width_points,
+                    ),
+                )
+                clip_y1: float = max(
+                    clip_y0 + 1.0,
+                    min(
+                        page_height_points,
+                        resolved_region.offset_y_points + resolved_region.height_points,
+                    ),
+                )
+                clip_rectangle = fitz.Rect(clip_x0, clip_y0, clip_x1, clip_y1)  # type: ignore[attr-defined]
+                exceeds_requested_box = True
 
             if not exceeds_requested_box:
                 embedded_image_list: list[tuple[object, ...]] = list(
@@ -453,21 +460,28 @@ def decode_and_clip_escl_payload(
 
     if not resolved_region.is_full_platen:
         pixel_bounds: tuple[int, int, int, int] = resolved_region.pixel_bounds(resolution_dpi)
-        horizontal_start_pixels: int = pixel_bounds[0]
-        vertical_start_pixels: int = pixel_bounds[1]
         target_width_pixels: int = pixel_bounds[2]
         target_height_pixels: int = pixel_bounds[3]
 
         raster_height: int = int(decoded_bgr.shape[0])
         raster_width: int = int(decoded_bgr.shape[1])
 
-        exceeds_raster_box: bool = (
-            (raster_width - target_width_pixels > 4)
-            or (raster_height - target_height_pixels > 4)
-            or (horizontal_start_pixels > 0)
-            or (vertical_start_pixels > 0)
+        # Only perform software sub-clipping if the scanner firmware returned an unclipped full-platen image
+        # for a small sub-region (e.g. ID card or small photo on a full glass bed).
+        # For standard paper sizes (A4, Letter) or when the scanner already bounded the capture,
+        # never crop into the image so user content is never cut off.
+        full_platen_width_px: int = int(round(PLATEN_MAX_WIDTH_INCHES * float(resolution_dpi)))
+        full_platen_height_px: int = int(round(PLATEN_MAX_HEIGHT_INCHES * float(resolution_dpi)))
+
+        is_sub_region_on_full_canvas: bool = (
+            (raster_width >= full_platen_width_px - 20)
+            and (raster_height >= full_platen_height_px - 20)
+            and (target_width_pixels < full_platen_width_px - 60 or target_height_pixels < full_platen_height_px - 60)
         )
-        if exceeds_raster_box:
+
+        if is_sub_region_on_full_canvas:
+            horizontal_start_pixels: int = pixel_bounds[0]
+            vertical_start_pixels: int = pixel_bounds[1]
             clamped_horizontal_start: int = max(0, min(raster_width - 1, horizontal_start_pixels))
             clamped_vertical_start: int = max(0, min(raster_height - 1, vertical_start_pixels))
             clamped_horizontal_end: int = max(
@@ -736,15 +750,6 @@ class EsclClient:
 
         clamped_brightness: int = max(-100, min(100, brightness))
         clamped_contrast: int = max(-100, min(100, contrast))
-        escl_brightness_value: int = max(0, min(2000, 1000 + (clamped_brightness * 10)))
-        escl_contrast_value: int = max(0, min(2000, 1000 + (clamped_contrast * 10)))
-
-        tone_xml_lines: str = ""
-        if clamped_brightness != 0 or clamped_contrast != 0:
-            tone_xml_lines = (
-                f"  <scan:Brightness>{escl_brightness_value}</scan:Brightness>\n"
-                f"  <scan:Contrast>{escl_contrast_value}</scan:Contrast>\n"
-            )
 
         normalized_output_format: str = output_format.strip().lower().lstrip(".")
         escl_document_format: str = (
@@ -773,7 +778,6 @@ class EsclClient:
             f"  <scan:XResolution>{resolution_dpi}</scan:XResolution>\n"
             f"  <scan:YResolution>{resolution_dpi}</scan:YResolution>\n"
             f"  <scan:ColorMode>{escl_color_token}</scan:ColorMode>\n"
-            f"{tone_xml_lines}"
             "</scan:ScanSettings>\n"
         )
 
@@ -857,7 +861,7 @@ class EsclClient:
             auto_crop_whitespace=auto_crop_whitespace,
             output_format=output_format,
             jpeg_quality=jpeg_quality,
-            apply_software_tone=False,
+            apply_software_tone=True,
         )
 
         if enable_beep:

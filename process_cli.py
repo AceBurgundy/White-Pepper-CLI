@@ -496,7 +496,7 @@ def handle_cards_command(arguments: argparse.Namespace) -> None:
                 output_format=output_extension,
                 jpeg_quality=int(arguments.jpeg_quality),
             )
-        print(f"  -> Extracted ID-1 card: {destination_path.name}")
+        print(f"  -> Extracted ID-1 card: {destination_path}")
 
 
 def handle_booklets_command(arguments: argparse.Namespace) -> None:
@@ -578,17 +578,17 @@ def handle_booklets_command(arguments: argparse.Namespace) -> None:
                 if correction_angle != 0:
                     page_bgr = rotate_image_to_upright(page_bgr, correction_angle)
 
-            target_filename: str = f"{global_page_counter:02d}.{output_ext}"
+            target_filename: str = f"{global_page_counter:02d}.{output_extension}"
             destination_path: Path = output_directory / target_filename
             apply_post_scan_adjustments_and_save(
                 source_bgr_image=page_bgr,
                 output_file_path=destination_path,
                 resolution_dpi=booklet_config.resolution_dpi,
-                output_format=output_ext,
+                output_format=output_extension,
                 jpeg_quality=booklet_config.jpeg_quality,
             )
             written_page_paths.append(destination_path)
-            print(f"  -> Saved page {global_page_counter}: {destination_path.name}")
+            print(f"  -> Saved page {global_page_counter}: {destination_path}")
             global_page_counter += 1
 
     if booklet_config.compile_pdf_path is not None and written_page_paths:

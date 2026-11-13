@@ -24,14 +24,17 @@ from __future__ import annotations
 # HTTP = Hypertext Transfer Protocol
 # TCP = Transmission Control Protocol
 # IP = Internet Protocol
+# JSON = JavaScript Object Notation
 
 import argparse
+import json
 from pathlib import Path
 import sys
 from typing import Optional
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from white_pepper.algorithms.card_vision import (
     CardExtractionResult,
@@ -725,6 +728,8 @@ def resolve_flatbed_scan_configuration(arguments: argparse.Namespace) -> ScanCon
     prefer_escl_flag: bool = (not usb_only_flag) and (effective_backend in ("auto", "escl"))
 
     maximum_scans_argument: int = int(getattr(arguments, "max_scans", 0))
+    if maximum_scans_argument == 1 and explicit_interval is None:
+        interval_value = None
     effective_maximum_scans: int = maximum_scans_argument if interval_value is not None else 1
 
     configuration: ScanConfiguration = ScanConfiguration(
@@ -827,7 +832,7 @@ def handle_flatbed_command(
             print(f"[Scan Iteration #{iteration_number}]")
             saved_batch_file: Path = scanner_manager.acquire_with_config(configuration)
             batch_size_megabytes: float = float(saved_batch_file.stat().st_size) / (1024.0 * 1024.0)
-            print(f"[Success] Saved: {saved_batch_file.name} ({batch_size_megabytes:.2f} MB)")
+            print(f"[Success] Saved: {saved_batch_file} ({batch_size_megabytes:.2f} MB)")
 
             if configuration.max_scans > 0 and iteration_number >= configuration.max_scans:
                 print(f"\n[Done] Reached configured --max-scans={configuration.max_scans}.")
@@ -903,6 +908,7 @@ def handle_card_command(
         backend_mode=effective_backend,
         escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
         escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+        wia_device_id=getattr(arguments, "device_id", None),
     )
 
     print("Acquiring 5x5 inch platen area...")
@@ -1032,6 +1038,7 @@ def handle_booklet_command(
         backend_mode=effective_backend,
         escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
         escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+        wia_device_id=getattr(arguments, "device_id", None),
         max_scans=maximum_spreads_count,
         interval_seconds=float(interval_delay_seconds),
         start_delay_seconds=float(start_delay_seconds),
@@ -1056,7 +1063,7 @@ def handle_booklet_command(
                 configuration=booklet_scan_config,
                 output_file_path=target_path,
             )
-            print(f"[Saved] {target_path.name}")
+            print(f"[Saved] {target_path}")
             if maximum_spreads_count > 0 and page_counter >= maximum_spreads_count:
                 print(f"\n[Done] Captured configured --max-scans={maximum_spreads_count} spreads.")
                 break
@@ -1133,6 +1140,7 @@ def handle_legal_stitch_command(
             backend_mode=effective_backend,
             escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
             escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+            wia_device_id=getattr(arguments, "device_id", None),
         )
 
         if not enable_ipc_mode:
@@ -1164,6 +1172,7 @@ def handle_legal_stitch_command(
             backend_mode=effective_backend,
             escl_host=str(getattr(arguments, "escl_ip", DEFAULT_ESCL_IP)),
             escl_port=int(getattr(arguments, "escl_port", DEFAULT_ESCL_PORT)),
+            wia_device_id=getattr(arguments, "device_id", None),
         )
 
         if not enable_ipc_mode:
