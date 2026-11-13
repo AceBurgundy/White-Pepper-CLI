@@ -133,11 +133,23 @@ class ScannerManager:
         )
         base_directory.mkdir(parents=True, exist_ok=True)
 
+        is_custom_prefix: bool = sanitized_prefix.lower() not in ("scan", "raw_card")
+        if is_custom_prefix:
+            candidate_path: Path = base_directory / f"{sanitized_prefix}.{cleaned_extension}"
+            collision_counter: int = 1
+            while candidate_path.exists():
+                deduplicated_name: str = (
+                    f"{sanitized_prefix}_{collision_counter:02d}.{cleaned_extension}"
+                )
+                candidate_path = base_directory / deduplicated_name
+                collision_counter += 1
+            return candidate_path
+
         filename: str = f"{sanitized_prefix}_{timestamp_string}_{quality_tag}{area_tag}.{cleaned_extension}"
-        candidate_path: Path = base_directory / filename
-        collision_counter: int = 1
+        candidate_path = base_directory / filename
+        collision_counter = 1
         while candidate_path.exists():
-            deduplicated_name: str = (
+            deduplicated_name = (
                 f"{sanitized_prefix}_{timestamp_string}_{collision_counter:02d}_"
                 f"{quality_tag}{area_tag}.{cleaned_extension}"
             )

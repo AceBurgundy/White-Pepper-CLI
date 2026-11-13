@@ -939,7 +939,20 @@ def handle_card_command(
         return
 
     card_filename_prefix: str = str(getattr(arguments, "card_filename_prefix", "card")).strip() or "card"
-    final_card_path: Path = cards_directory / f"{card_filename_prefix}_{saved_raw_path.stem}.{output_extension}"
+    is_custom_card_name: bool = card_filename_prefix.lower() != "card"
+    if is_custom_card_name:
+        candidate_card_path: Path = cards_directory / f"{card_filename_prefix}.{output_extension}"
+        card_collision_counter: int = 1
+        while candidate_card_path.exists():
+            candidate_card_path = (
+                cards_directory / f"{card_filename_prefix}_{card_collision_counter:02d}.{output_extension}"
+            )
+            card_collision_counter += 1
+        final_card_path: Path = candidate_card_path
+    else:
+        now_instant: datetime.datetime = datetime.datetime.now()
+        timestamp_string: str = now_instant.strftime("%Y%m%d_%H%M%S")
+        final_card_path: Path = cards_directory / f"card_{timestamp_string}.{output_extension}"
     requested_background: str = str(arguments.background_mode)
     effective_background: str = (
         "white"
