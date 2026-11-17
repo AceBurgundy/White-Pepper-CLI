@@ -74,7 +74,13 @@ export class App extends Component {
     window.DOCUMENTATION_ITEMS = window.DOCUMENTATION_ITEMS || {};
 
     /** @type {string} */
-    const initialPath = this.dashboardPath;
+    let initialPath = this.dashboardPath;
+    if (typeof window !== "undefined" && window.location.hash) {
+      const cleanHash = window.location.hash.replace(/^#\/?/, "");
+      if (cleanHash) {
+        initialPath = cleanHash;
+      }
+    }
 
     /** @type {import("../../../../Component.js").Signal<string>} */
     this.activePathSignal = signal(initialPath);
@@ -149,6 +155,7 @@ export class App extends Component {
     this.mounted = () => {
       this.attachBackdropListener();
       this.attachWindowResizeListener();
+      this.attachHashNavigationListener();
       if (initialPath) {
         this.loadInitialPage(initialPath);
       } else {
@@ -291,7 +298,27 @@ export class App extends Component {
   }
 
   /**
-   * Navigates to a specific documentation page path.
+   * Attaches hashchange and popstate listeners to synchronize browser history and deep linking.
+   * @returns {void}
+   */
+  attachHashNavigationListener() {
+    const handleUrlChange = () => {
+      if (typeof window !== "undefined") {
+        const cleanHash = window.location.hash.replace(/^#\/?/, "");
+        const targetPath = cleanHash || this.dashboardPath;
+        if (targetPath && targetPath !== this.activePathSignal.value) {
+          this.activePathSignal.value = targetPath;
+          this.loadNavigationItem(targetPath);
+        }
+      }
+    };
+
+    window.addEventListener("hashchange", handleUrlChange, { passive: true });
+    window.addEventListener("popstate", handleUrlChange, { passive: true });
+  }
+
+  /**
+   * Navigates to a specific documentation page path and updates URL hash for deep linking and history.
    * @param {string} targetNavigationPath - Path of the target documentation item.
    * @returns {void}
    */
@@ -300,6 +327,16 @@ export class App extends Component {
       return;
     }
     this.activePathSignal.value = targetNavigationPath;
+    if (typeof window !== "undefined") {
+      const targetHash = `#/${targetNavigationPath.replace(/^\//, "")}`;
+      if (window.location.hash !== targetHash) {
+        try {
+          window.history.pushState(null, "", targetHash);
+        } catch {
+          window.location.hash = targetHash;
+        }
+      }
+    }
     this.loadNavigationItem(targetNavigationPath);
   }
 

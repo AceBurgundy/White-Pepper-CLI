@@ -71,16 +71,14 @@ export const raw = markup => new TrustedHTMLString(markup);
  * CSP nonce captured at module evaluation time.
  * @type {string}
  */
-const CSP_NONCE = document.currentScript?.nonce
-  ?? document.querySelector("script[nonce]")?.nonce
-  ?? "";
+const CSP_NONCE = (typeof document !== "undefined" ? (document.currentScript?.nonce ?? document.querySelector("script[nonce]")?.nonce) : "") ?? "";
 
 /**
  * Idempotent and compatibility-verified TrustedTypes policy.
  * @type {TrustedTypePolicy|null}
  */
 const trustedTypesPolicy = (() => {
-  if (!window.trustedTypes?.createPolicy) {
+  if (typeof window === "undefined" || !window.trustedTypes?.createPolicy) {
     return null;
   }
   try {
@@ -167,8 +165,14 @@ export function sanitizeRoutePath(rawPath) {
   if (cleanPath.startsWith("//") || cleanPath.startsWith("\\/")) {
     return "/";
   }
+  if (cleanPath.startsWith("#")) {
+    cleanPath = cleanPath.replace(/^#\/?/, "/");
+  }
   if (applicationBasePath && cleanPath.startsWith(applicationBasePath)) {
     cleanPath = cleanPath.slice(applicationBasePath.length);
+  }
+  if (cleanPath.length > 1 && cleanPath.endsWith("/")) {
+    cleanPath = cleanPath.slice(0, -1);
   }
   if (!cleanPath.startsWith("/")) {
     cleanPath = "/" + cleanPath;
@@ -303,6 +307,9 @@ export class TemplateResult {
   }
 }
 
+/** @type {Set<string>} */
+const warnedCallbackSignatures = new Set();
+
 /**
  * Renders a TemplateResult instance to a fully sanitized HTML string.
  * @param {TemplateResult} templateResult - The template result to render.
@@ -328,6 +335,23 @@ function renderTemplateResultToString(templateResult) {
         /** @type {string} */
         const eventToken = uniqueIdentifier();
         activeEventBindings.set(eventToken, { eventName, handler: /** @type {EventListener} */ (dynamicValue) });
+
+        // Diagnostic: Detect wrapped Redirect.to callbacks that delay route registration
+        try {
+          const fnString = Function.prototype.toString.call(dynamicValue);
+          if (fnString.includes("Redirect.to") && !warnedCallbackSignatures.has(fnString)) {
+            warnedCallbackSignatures.add(fnString);
+            console.warn(
+              `[lite-spa] Detected 'Redirect.to()' inside a wrapped callback on '${attrName}':\n` +
+              `  ${fnString.slice(0, 120)}\n` +
+              `For instant route registration at template compile time, pass Redirect.to directly:\n` +
+              `  ${attrName}=\${Redirect.to(Component, path)}\n` +
+              `If navigating imperatively inside logic, use Redirect.navigate(path) instead.`
+            );
+          }
+        } catch {
+          // Ignore diagnostic inspection failures
+        }
 
         /** @type {RegExp} */
         const attrPattern = new RegExp(`\\b${attrName}\\s*=\\s*['"]?__LITE_SLOT_ATTR_${slot.index}__['"]?`);
@@ -462,8 +486,10 @@ function hydrateSignalBindings(containerElement) {
   });
 
   // 2. Hydrate Direct Event Listeners (onclick=${fn}, @click=${fn})
-  /** @type {NodeListOf<HTMLElement>} */
-  const eventElements = containerElement.querySelectorAll("[data-lite-evt]");
+  /** @type {Array<Element>|NodeListOf<Element>} */
+  const eventElements = typeof containerElement.querySelectorAll === "function"
+    ? containerElement.querySelectorAll("[data-lite-evt]")
+    : [];
   eventElements.forEach(elementNode => {
     /** @type {string|null} */
     const eventToken = elementNode.getAttribute("data-lite-evt");
@@ -701,8 +727,9 @@ export function effect(effectFunction) {
 
 /** @type {boolean} */
 const IS_SECURE_CONTEXT = (
-  window.isSecureContext ??
-  (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  (typeof window !== "undefined" && window.isSecureContext) ??
+  (typeof location !== "undefined" && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) ??
+  false
 );
 
 /** @type {string} */
@@ -921,6 +948,9 @@ const storageListeners = new Map();
  * @returns {void}
  */
 function registerStorageListener(storageKeyName, listenerFunction) {
+  if (typeof window === "undefined") {
+    return;
+  }
   /** @type {EventListener|undefined} */
   const existingListener = storageListeners.get(storageKeyName);
   if (existingListener) {
@@ -935,6 +965,9 @@ function registerStorageListener(storageKeyName, listenerFunction) {
  * @returns {void}
  */
 function unregisterAllStorageListeners() {
+  if (typeof window === "undefined") {
+    return;
+  }
   storageListeners.forEach(listenerFunction => window.removeEventListener("storage", listenerFunction));
 }
 
@@ -943,6 +976,9 @@ function unregisterAllStorageListeners() {
  * @returns {void}
  */
 function reregisterAllStorageListeners() {
+  if (typeof window === "undefined") {
+    return;
+  }
   storageListeners.forEach(listenerFunction => window.addEventListener("storage", listenerFunction));
 }
 
@@ -1087,6 +1123,7 @@ export function relay(keyName, defaultValue) {
 
 /** @type {boolean} */
 const SUPPORTS_ADOPTED_STYLESHEETS = (
+  typeof Document !== "undefined" &&
   "adoptedStyleSheets" in Document.prototype &&
   (() => {
     try {
@@ -1329,121 +1366,186 @@ function deferredScrollRestore(targetScrollY) {
  * State-driven router path signal.
  * @type {Signal<string> & RelaySignalExtension}
  */
-export const route = relay("router-path", window.location.pathname);
+export const route = relay("router-path", typeof window !== "undefined" && window.location ? window.location.pathname : "/");
+
+/** @type {number} */
+let activeNavigationId = 0;
 
 /**
- * Intercepts client-side navigation clicks with Shadow DOM pierce-through.
- * @param {MouseEvent} clickEvent
- * @returns {void}
+ * Extracts a Component class from an ES module namespace object.
+ * @param {any} moduleObj - The module namespace or export object.
+ * @returns {typeof Component|null} The resolved Component class.
  */
-document.addEventListener("click", clickEvent => {
-  /** @type {Array<EventTarget>} */
-  const eventPath = clickEvent.composedPath ? clickEvent.composedPath() : [clickEvent.target];
-  /** @type {HTMLAnchorElement|null} */
-  let routeAnchor = null;
-
-  for (const targetNode of eventPath) {
-    if (targetNode instanceof HTMLElement && targetNode.hasAttribute("data-lite-spa-route")) {
-      routeAnchor = targetNode;
-      break;
+function extractComponentFromModule(moduleObj) {
+  if (!moduleObj) {
+    return null;
+  }
+  if (moduleObj.default && (moduleObj.default.prototype instanceof Component || moduleObj.default === Component)) {
+    return moduleObj.default;
+  }
+  for (const exportedValue of Object.values(moduleObj)) {
+    if (typeof exportedValue === "function" && (exportedValue.prototype instanceof Component || exportedValue === Component)) {
+      return exportedValue;
     }
   }
+  return typeof moduleObj.default === "function" ? moduleObj.default : null;
+}
 
-  if (!routeAnchor) {
-    return;
-  }
+if (typeof document !== "undefined") {
+  /**
+   * Intercepts client-side navigation clicks with Shadow DOM pierce-through.
+   * @param {MouseEvent} clickEvent
+   * @returns {void}
+   */
+  document.addEventListener("click", clickEvent => {
+    /** @type {Array<EventTarget>} */
+    const eventPath = clickEvent.composedPath ? clickEvent.composedPath() : [clickEvent.target];
+    /** @type {HTMLAnchorElement|null} */
+    let routeAnchor = null;
 
-  /** @type {string|null} */
-  const destinationPath = routeAnchor.getAttribute("href");
-  if (!destinationPath) {
-    return;
-  }
-
-  /** @type {any} */
-  let matchedComponent = routes[destinationPath];
-  if (typeof matchedComponent === "function") {
-    if (!(matchedComponent.prototype instanceof Component) && matchedComponent !== Component) {
-      try {
-        matchedComponent = matchedComponent();
-      } catch {
-        // Fallback
+    for (const targetNode of eventPath) {
+      if (targetNode instanceof HTMLElement && (targetNode.hasAttribute("data-lite-spa-route") || targetNode.hasAttribute("data-lite-route"))) {
+        routeAnchor = targetNode;
+        break;
       }
     }
-  }
-  if (!matchedComponent) {
-    return;
-  }
 
-  clickEvent.preventDefault();
-  renderRoute(matchedComponent, destinationPath);
-});
+    if (!routeAnchor) {
+      return;
+    }
+
+    /** @type {string|null} */
+    const destinationPath = routeAnchor.getAttribute("href") || routeAnchor.getAttribute("data-lite-spa-route") || routeAnchor.getAttribute("data-lite-route");
+    if (!destinationPath || destinationPath.startsWith("http://") || destinationPath.startsWith("https://") || destinationPath.startsWith("//")) {
+      return;
+    }
+
+    const normalized = sanitizeRoutePath(destinationPath);
+    const matchedComponent = resolveRouteComponent(normalized);
+    if (!matchedComponent) {
+      return;
+    }
+
+    clickEvent.preventDefault();
+    Redirect.navigate(destinationPath);
+  });
+}
 
 /**
- * Resolves a registered component class by route path, evaluating lazy getters if present.
+ * Resolves a registered component class or getter by route path.
  * @param {string} targetPath - Route URL path.
- * @returns {typeof Component|undefined}
+ * @returns {any}
  */
 function resolveRouteComponent(targetPath) {
-  /** @type {any} */
-  let matched = routes[targetPath];
-  if (typeof matched === "function") {
-    if (matched.prototype && matched.prototype instanceof Component) {
+  const normalized = sanitizeRoutePath(targetPath);
+  let matched = routes[normalized];
+  if (matched) {
+    return matched;
+  }
+  if (normalized.endsWith("/") && normalized.length > 1) {
+    matched = routes[normalized.slice(0, -1)];
+    if (matched) {
       return matched;
-    }
-    try {
-      /** @type {any} */
-      const evaluated = matched();
-      if (evaluated && evaluated.prototype && evaluated.prototype instanceof Component) {
-        return evaluated;
-      }
-    } catch {
-      // Fallback
     }
   }
   return undefined;
 }
 
-// BFCache and popstate event management for browser back/forward buttons
-window.addEventListener("popstate", popstateEvent => {
-  /** @type {string} */
-  const currentPath = sanitizeRoutePath(window.location.pathname);
-  /** @type {typeof Component|undefined} */
-  const destinationPage = resolveRouteComponent(currentPath);
-  /** @type {number} */
-  const savedScrollPosition = popstateEvent.state?.__liteScrollY ?? 0;
+/**
+ * Global router mode setting: true for Hash routing, false for Path routing, or "auto".
+ * @type {boolean|"auto"}
+ */
+let isHashRouting = "auto";
 
-  if (destinationPage) {
-    if (route.value !== currentPath) {
-      route.value = currentPath;
-    }
-    renderRoute(destinationPage, currentPath, { updateHistory: false, state: popstateEvent.state });
-    deferredScrollRestore(savedScrollPosition);
+/**
+ * Determines whether hash routing should currently be active.
+ * @returns {boolean}
+ */
+export function shouldUseHashRouting() {
+  if (isHashRouting === true) return true;
+  if (isHashRouting === false) return false;
+  if (typeof window !== "undefined") {
+    if (window.location.protocol === "file:") return true;
+    if (window.location.hash.startsWith("#/") || window.location.hash.startsWith("#")) return true;
   }
-});
+  return false;
+}
 
-window.addEventListener("pageshow", pageshowEvent => {
-  if (pageshowEvent.persisted) {
-    reregisterAllStorageListeners();
-    /** @type {HTMLElement|null} */
-    const routeContainer = document.querySelector("[data-lite-route-container]") ?? document.body;
-    if (routeContainer) {
-      unmountActiveComponents();
+/**
+ * Extracts and normalizes the active browser URL route.
+ * @returns {string}
+ */
+export function getCurrentBrowserPath() {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+  if (shouldUseHashRouting()) {
+    const hash = window.location.hash;
+    if (hash) {
+      return sanitizeRoutePath(hash);
     }
+    return "/";
+  }
+  return sanitizeRoutePath(window.location.pathname);
+}
+
+if (typeof window !== "undefined") {
+  /**
+   * Universal location change handler for popstate (Back/Forward) and hashchange.
+   * @param {PopStateEvent|HashChangeEvent|Event} [navEvent]
+   */
+  const handleLocationChange = (navEvent) => {
     /** @type {string} */
-    const currentPath = sanitizeRoutePath(window.location.pathname);
-    /** @type {typeof Component|undefined} */
-    const targetPage = routes[currentPath];
-    if (targetPage) {
-      renderRoute(targetPage, currentPath, { updateHistory: false });
-    }
-  }
-});
+    const currentPath = getCurrentBrowserPath();
 
-window.addEventListener("pagehide", pagehideEvent => {
-  if (pagehideEvent.persisted) {
-    unregisterAllStorageListeners();
-  }
-});
+    // Notify all Redirect.onRouteChange() subscribers with the resolved path.
+    // This fires before renderRoute so components can react synchronously.
+    Redirect.eventTarget.dispatchEvent(
+      new CustomEvent("routechange", { detail: { path: currentPath } })
+    );
+
+    /** @type {any} */
+    const destinationPage = resolveRouteComponent(currentPath);
+    /** @type {number} */
+    const savedScrollPosition = navEvent?.state?.__liteScrollY ?? 0;
+
+    if (destinationPage) {
+      if (route.value !== currentPath) {
+        route.value = currentPath;
+      }
+      renderRoute(destinationPage, currentPath, { updateHistory: false, state: navEvent?.state });
+      deferredScrollRestore(savedScrollPosition);
+    }
+  };
+
+  // BFCache, popstate, and hashchange event management for browser back/forward and hash links
+  window.addEventListener("popstate", handleLocationChange);
+  window.addEventListener("hashchange", handleLocationChange);
+
+  window.addEventListener("pageshow", pageshowEvent => {
+    if (pageshowEvent.persisted) {
+      reregisterAllStorageListeners();
+      /** @type {HTMLElement|null} */
+      const routeContainer = document.querySelector("[data-lite-route-container]") ?? document.body;
+      if (routeContainer) {
+        unmountActiveComponents();
+      }
+      /** @type {string} */
+      const currentPath = getCurrentBrowserPath();
+      /** @type {typeof Component|undefined} */
+      const targetPage = routes[currentPath];
+      if (targetPage) {
+        renderRoute(targetPage, currentPath, { updateHistory: false });
+      }
+    }
+  });
+
+  window.addEventListener("pagehide", pagehideEvent => {
+    if (pagehideEvent.persisted) {
+      unregisterAllStorageListeners();
+    }
+  });
+}
 
 /**
  * Creates a route state object with scroll snapshot and stack index.
@@ -1496,18 +1598,59 @@ const unmountActiveComponents = () => {
 };
 
 /**
- * Renders a component for a specific URL path with non-destructive history.
- * @param {typeof Component} destinationComponent - The component class to render.
+ * Renders a component for a specific URL path with non-destructive history, async hydration, and transition hooks.
+ * @param {any} destinationComponentOrGetter - The component class, lazy getter, or dynamic import Promise.
  * @param {string} pathString - The URL path.
  * @param {Object} [renderOptions] - Settings.
  * @param {boolean} [renderOptions.replace=false] - Whether to replace history state.
  * @param {boolean} [renderOptions.updateHistory=true] - Whether to push history state.
+ * @param {any} [renderOptions.state=null] - History state snapshot.
  * @returns {Promise<void>}
  */
-const renderRoute = async (destinationComponent, pathString, { replace = false, updateHistory = true } = {}) => {
+const renderRoute = async (destinationComponentOrGetter, pathString, { replace = false, updateHistory = true, state = null } = {}) => {
+  const currentNavId = ++activeNavigationId;
   /** @type {number} */
   const currentRenderVersion = ++renderVersion;
-  routes[pathString] = destinationComponent;
+  const normalizedPath = sanitizeRoutePath(pathString);
+  const previousPath = route.value;
+
+  // 1. Invoke optional onBeforeNavigate transition hook
+  if (typeof Redirect.onBeforeNavigate === "function") {
+    try {
+      await Redirect.onBeforeNavigate(normalizedPath, previousPath);
+    } catch (hookError) {
+      console.error("[lite-spa] Error in Redirect.onBeforeNavigate:", hookError);
+    }
+  }
+
+  // 2. Resolve component (synchronous class, lazy factory, or dynamic import)
+  let ResolvedComponent = destinationComponentOrGetter;
+  if (typeof ResolvedComponent === "function" && !(ResolvedComponent.prototype instanceof Component) && ResolvedComponent !== Component) {
+    try {
+      const evaluationResult = ResolvedComponent();
+      ResolvedComponent = evaluationResult instanceof Promise ? await evaluationResult : evaluationResult;
+    } catch (evalError) {
+      console.error(`[lite-spa] Failed to resolve route component for "${normalizedPath}":`, evalError);
+      return;
+    }
+  }
+
+  // Handle ES Module namespace object (e.g. from dynamic import())
+  if (ResolvedComponent && typeof ResolvedComponent === "object") {
+    ResolvedComponent = extractComponentFromModule(ResolvedComponent);
+  }
+
+  if (!ResolvedComponent || typeof ResolvedComponent !== "function") {
+    console.error(`[lite-spa] Route target for "${normalizedPath}" is not a valid Component class:`, ResolvedComponent);
+    return;
+  }
+
+  // Guard against stale navigation race conditions
+  if (currentNavId !== activeNavigationId) {
+    return;
+  }
+
+  routes[normalizedPath] = ResolvedComponent;
 
   /** @type {string} */
   let renderedTemplateString = "";
@@ -1517,7 +1660,7 @@ const renderRoute = async (destinationComponent, pathString, { replace = false, 
     shouldQueueMounts = true;
 
     /** @type {Component} */
-    const componentInstance = new destinationComponent();
+    const componentInstance = new ResolvedComponent();
     renderedTemplateString = componentInstance.toString();
   } finally {
     shouldQueueMounts = false;
@@ -1525,22 +1668,30 @@ const renderRoute = async (destinationComponent, pathString, { replace = false, 
 
   await waitForStyles();
 
-  if (currentRenderVersion !== renderVersion) {
+  if (currentRenderVersion !== renderVersion || currentNavId !== activeNavigationId) {
     return;
   }
 
-  if (updateHistory && window.location.pathname !== pathString) {
-    try {
-      /** @type {string} */
-      const historyMethod = replace ? "replaceState" : "pushState";
-      window.history[historyMethod](routeState(pathString), "", pathString);
-    } catch {
-      // In file:/// protocol, history.pushState with absolute path throws SecurityError
+  if (updateHistory && typeof window !== "undefined") {
+    const useHashMode = shouldUseHashRouting();
+    const targetUrl = useHashMode ? `#${normalizedPath}` : normalizedPath;
+    const currentUrlPart = useHashMode ? (window.location.hash || "#/") : window.location.pathname;
+
+    if (currentUrlPart !== targetUrl) {
+      try {
+        /** @type {string} */
+        const historyMethod = replace ? "replaceState" : "pushState";
+        window.history[historyMethod](state || routeState(normalizedPath), "", targetUrl);
+      } catch {
+        if (useHashMode) {
+          window.location.hash = targetUrl;
+        }
+      }
     }
   }
 
-  if (route.value !== pathString) {
-    route.value = pathString;
+  if (route.value !== normalizedPath) {
+    route.value = normalizedPath;
   }
 
   unmountActiveComponents();
@@ -1557,78 +1708,182 @@ const renderRoute = async (destinationComponent, pathString, { replace = false, 
     void routeContainer.offsetWidth; // Trigger reflow for CSS animation restart
     routeContainer.classList.add("lite-page-enter");
     activeComponents = mountQueuedComponents();
+
+    // 3. Invoke optional onAfterNavigate transition hook
+    if (typeof Redirect.onAfterNavigate === "function") {
+      try {
+        Redirect.onAfterNavigate(normalizedPath, previousPath);
+      } catch (afterHookError) {
+        console.error("[lite-spa] Error in Redirect.onAfterNavigate:", afterHookError);
+      }
+    }
   };
 
   if (typeof document.startViewTransition === "function") {
-    document.startViewTransition(() => applyRender());
+    /** @type {ViewTransition} */
+    const viewTransition = document.startViewTransition(() => applyRender());
+    // Silently swallow expected AbortError/DOMException rejections from interrupted
+    // transitions (e.g., rapid navigation). Without this catch the browser emits
+    // unhandledrejection events that have nothing to do with the developer's own code.
+    if (viewTransition?.finished) {
+      viewTransition.finished.catch((transitionError) => {
+        if (
+          transitionError?.name === "AbortError" ||
+          transitionError?.name === "DOMException" ||
+          String(transitionError?.message || "").includes("ViewTransition")
+        ) {
+          return;
+        }
+        console.error("[lite-spa] ViewTransition.finished rejected:", transitionError);
+      });
+    }
   } else {
     applyRender();
   }
 };
 
 export class Redirect {
+  /** @type {function(string, string): Promise<void>|void|null} */
+  static onBeforeNavigate = null;
+
+  /** @type {function(string, string): void|null} */
+  static onAfterNavigate = null;
+
   /**
-   * Constructs a Redirect navigation anchor component.
-   * @param {Object} redirectOptions
-   * @param {string} redirectOptions.id - Unique element ID.
-   * @param {typeof Component|function(): typeof Component|string} redirectOptions.destination - Target component class or lazy getter.
-   * @param {string} redirectOptions.path - Target URL path.
-   * @param {Record<string, string>} [redirectOptions.attributes={}] - Additional HTML attributes.
-   * @param {string} [redirectOptions.innerHTML=""] - Anchor inner content.
+   * Internal EventTarget for component-safe route change subscriptions.
+   * Fired by handleLocationChange on every popstate or hashchange event.
+   * @type {EventTarget}
    */
-  constructor({ id, destination, path, attributes = {}, innerHTML = "" } = {}) {
-    if (!id || typeof id !== "string") {
-      throw new Error("Redirect element ID must be a non-empty string");
-    }
-    if (!destination) {
-      throw new Error("Redirect destination class cannot be null");
-    }
-    if (typeof path !== "string") {
-      throw new Error("Redirect path must be of type string");
+  static eventTarget = new EventTarget();
+
+  /**
+   * Subscribes to route path changes with automatic cleanup support.
+   * Preferred over direct window.addEventListener("hashchange"/"popstate") inside
+   * components — the returned function integrates cleanly with this.beforeUnmount.
+   *
+   * @example
+   * // Inside a Component constructor:
+   * const unsubscribe = Redirect.onRouteChange((path) => {
+   *   console.log("Navigated to:", path);
+   * });
+   * this.beforeUnmount = () => unsubscribe();
+   *
+   * @param {function(string): void} callback - Called with the normalized path string on each route change.
+   * @returns {function(): void} Unsubscribe cleanup function.
+   */
+  static onRouteChange(callback) {
+    /** @param {CustomEvent} event */
+    const handler = (event) => callback(event.detail.path);
+    Redirect.eventTarget.addEventListener("routechange", handler);
+    return () => Redirect.eventTarget.removeEventListener("routechange", handler);
+  }
+
+  /**
+   * Router mode setting: true for Hash routing, false for Path routing, or "auto".
+   * @type {boolean|"auto"}
+   */
+  static get useHash() {
+    return isHashRouting;
+  }
+  static set useHash(val) {
+    isHashRouting = val;
+  }
+
+  /**
+   * Registers a route immediately and returns a click event handler function.
+   * Usage: <button onclick=${Redirect.to(About, "/about")}>About</button>
+   * @param {typeof Component|function(): (typeof Component|Promise<any>)|string} target - Component class or lazy getter.
+   * @param {string} path - URL path.
+   * @returns {function(Event): void} Event listener.
+   */
+  static to(target, path) {
+    const normalizedPath = sanitizeRoutePath(path);
+    routes[normalizedPath] = target;
+    return (event) => {
+      if (event && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      Redirect.navigate(normalizedPath);
+    };
+  }
+
+  /**
+   * Registers a route immediately and returns an HTML anchor markup string.
+   * Usage: ${Redirect.link({ destination: About, path: "/about", text: "About" })}
+   * @param {Object|string} options - Link options or path.
+   * @returns {TrustedHTMLString} Trusted HTML anchor markup.
+   */
+  static link(options) {
+    /** @type {any} */
+    const opts = typeof options === "string" ? { path: options, destination: options } : (options || {});
+    const {
+      id = "route-" + uniqueIdentifier(),
+      destination,
+      path,
+      attributes = {},
+      text = "",
+      innerHTML = ""
+    } = opts;
+
+    if (!path) {
+      throw new Error("[lite-spa] Redirect.link requires a path string");
     }
 
-    /** @type {string} */
+    const normalizedPath = sanitizeRoutePath(path);
+    if (destination) {
+      routes[normalizedPath] = destination;
+    }
+
     const cleanAttributes = Object.entries(attributes)
+      .filter(([k]) => k !== "href" && k !== "data-lite-spa-route" && k !== "data-lite-route")
       .map(([attrKey, attrVal]) => `${attrKey}="${escapeHtml(attrVal)}"`)
       .join(" ");
 
-    /**
-     * Resolves the destination component class dynamically.
-     * @returns {typeof Component}
-     */
-    const resolveDestination = () => {
-      if (typeof destination === "function") {
-        if (destination.prototype && destination.prototype instanceof Component) {
-          return destination;
-        }
-        try {
-          const evaluated = destination();
-          if (evaluated) {
-            return evaluated;
-          }
-        } catch {
-          return destination;
-        }
-        return destination;
-      }
-      if (typeof destination === "string" && typeof window !== "undefined") {
-        return window[destination] || window.LiteSpa?.[destination];
-      }
-      return destination;
-    };
+    const anchorText = innerHTML || text || "";
+    const uniqueAnchorId = id.includes("-") ? id : `${id}-${uniqueIdentifier()}`;
+    const attrString = cleanAttributes ? ` ${cleanAttributes}` : "";
+    const hrefPath = shouldUseHashRouting() ? `#${normalizedPath}` : normalizedPath;
 
-    /**
-     * @returns {string}
-     */
-    const renderAnchor = () => {
-      /** @type {string} */
-      const uniqueAnchorId = `${id}-${uniqueIdentifier()}`;
-      routes[path] = resolveDestination;
-      return `<a href="${path}" id="${uniqueAnchorId}" data-lite-spa-route="${path}" ${cleanAttributes}>${innerHTML}</a>`;
-    };
+    return raw(`<a href="${hrefPath}" id="${uniqueAnchorId}" data-lite-spa-route="${normalizedPath}"${attrString}>${anchorText}</a>`);
+  }
 
-    /** @type {function(): string} */
-    this.toString = () => renderAnchor();
+  /**
+   * Programmatic navigation.
+   * Usage: Redirect.navigate("/dashboard")
+   * @param {string} path - URL path to navigate to.
+   * @param {Object} [options] - Navigation settings.
+   * @returns {Promise<boolean>}
+   */
+  static async navigate(path, { replace = false, updateHistory = true, state = null } = {}) {
+    const normalizedPath = sanitizeRoutePath(path);
+    const destination = resolveRouteComponent(normalizedPath);
+    if (!destination) {
+      console.warn(`[lite-spa] No registered route found for path: "${normalizedPath}"`);
+      return false;
+    }
+    await renderRoute(destination, normalizedPath, { replace, updateHistory, state });
+    return true;
+  }
+
+  /**
+   * Explicitly registers a route without rendering.
+   * @param {string} path - Route path.
+   * @param {typeof Component|function(): (typeof Component|Promise<any>)} target - Component class or lazy getter.
+   * @returns {void}
+   */
+  static register(path, target) {
+    const normalizedPath = sanitizeRoutePath(path);
+    routes[normalizedPath] = target;
+  }
+
+  /**
+   * Backward-compatibility constructor for legacy new Redirect(...)
+   * @param {Object} legacyOptions
+   */
+  constructor(legacyOptions = {}) {
+    /** @type {TrustedHTMLString} */
+    const anchorMarkup = Redirect.link(legacyOptions);
+    this.toString = () => anchorMarkup.toString();
   }
 }
 
@@ -1638,8 +1893,13 @@ export class Root {
    * @param {Object} rootOptions
    * @param {typeof Component} rootOptions.destination - Initial component class.
    * @param {string} [rootOptions.path="/"] - Root route path.
+   * @param {boolean|"auto"} [rootOptions.useHash="auto"] - Router mode: true for Hash routing, false for Path routing, or "auto".
+   * @param {boolean} [rootOptions.persistent=false] - When true, the root component is never registered as a
+   *   navigable route after bootstrap. Use this for persistent App Shell layouts to prevent the router from
+   *   ever unmounting or re-rendering the shell on child navigation. Replaces the manual
+   *   `Redirect.register("/", null)` workaround.
    */
-  constructor({ destination, path = "/" } = {}) {
+  constructor({ destination, path = "/", useHash = "auto", persistent = false } = {}) {
     if (!destination) {
       throw new Error("Root destination component class cannot be null");
     }
@@ -1647,18 +1907,61 @@ export class Root {
       throw new Error("Root path must be of type string");
     }
 
+    isHashRouting = useHash;
+
     /**
-     * Boots the root route into the DOM.
+     * Boots the root route into the DOM with 0ms pre-pass route registration.
      * @returns {void}
      */
     this.render = () => {
-      routes[path] = destination;
-      try {
-        window.history.replaceState(routeState(path), "", path);
-      } catch {
-        // In file:/// protocol, history.replaceState with absolute path throws SecurityError
+      if (isHashRouting === "auto" && typeof window !== "undefined") {
+        if (window.location.hash.startsWith("#") || window.location.protocol === "file:") {
+          isHashRouting = true;
+        }
       }
-      renderRoute(destination, path, { replace: true, updateHistory: false });
+
+      const currentBrowserPath = getCurrentBrowserPath();
+      routes[path] = destination;
+
+      // Dry-run pre-pass: instantiate root component in memory to execute child Redirect declarations
+      try {
+        pendingMounts.splice(0);
+        shouldQueueMounts = true;
+        const dryInstance = new destination();
+        dryInstance.toString();
+      } catch {
+        // Ignore dry run errors
+      } finally {
+        pendingMounts.splice(0);
+        shouldQueueMounts = false;
+      }
+
+      const matched = resolveRouteComponent(currentBrowserPath);
+      const targetComponent = matched || destination;
+      const targetPath = matched ? currentBrowserPath : path;
+
+      const useHashMode = shouldUseHashRouting();
+      const targetUrl = useHashMode ? `#${targetPath}` : targetPath;
+
+      try {
+        window.history.replaceState(routeState(targetPath), "", targetUrl);
+      } catch {
+        if (useHashMode && typeof window !== "undefined") {
+          window.location.hash = targetUrl;
+        }
+      }
+
+      renderRoute(targetComponent, targetPath, { replace: true, updateHistory: false });
+
+      // Persistent root: remove the bootstrap route entry so the router never treats
+      // the root path as a navigable target again. This protects a persistent App Shell
+      // from being unmounted or overwritten when child routes render.
+      // Deferred via microtask so renderRoute's async body has already committed.
+      if (persistent) {
+        Promise.resolve().then(() => {
+          routes[sanitizeRoutePath(path)] = null;
+        });
+      }
     };
   }
 }
