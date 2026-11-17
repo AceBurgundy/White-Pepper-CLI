@@ -31,10 +31,10 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/headless-cli-engine.js"] = {
           "block_type": "table",
           "table_headers": ["Subcommand", "Key Arguments", "Description"],
           "table_rows": [
-            ["flatbed", "--paper-size, --dpi, --color-mode, --rotate, --auto-crop, --brightness, --contrast, --format, --prefix", "Acquire single flatbed page with optional border trimming"],
-            ["card", "--name, --dpi, --color-mode, --background, --safety-inset, --corner-radius, --no-deskew, --no-prompt", "Scan and extract rectangular ID card with rounded corners"],
-            ["booklet", "--interval, --max-scans, --dpi, --color-mode, --format, --prefix", "Interactive timer-based booklet page spread acquisition"],
-            ["legal-stitch", "--dpi, --color-mode, --format, --ipc-mode, --name", "Orchestrate 2-pass top/bottom scans and stitch into 14-inch legal output"]
+            ["flatbed", "--paper-size, --resolution, --color-mode, --rotate, --auto-crop, --brightness, --contrast, --format, --output-directory, --filename-prefix", "Acquire single flatbed page with optional border trimming"],
+            ["card", "--filename-prefix, --resolution, --color-mode, --background, --safety-inset-millimeters, --corner-radius-millimeters, --no-deskew, --no-prompt", "Scan and extract rectangular ID card with rounded corners"],
+            ["booklet", "--interval, --max-scans, --resolution, --color-mode, --format, --filename-prefix", "Interactive timer-based booklet page spread acquisition"],
+            ["legal-stitch", "--resolution, --color-mode, --format, --ipc-mode, --document-name", "Orchestrate 2-pass top/bottom scans and stitch into 14-inch legal output"]
           ]
         },
         {
@@ -42,7 +42,7 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/headless-cli-engine.js"] = {
           "block_type": "code_block",
           "header_label": "PowerShell / Bash",
           "language_identifier": "bash",
-          "code_content": "# High-resolution 600 DPI A4 scan in PNG format\npython scripts/scan_cli.py flatbed --paper-size a4 --dpi 600 --color-mode color --format png --prefix CONTRACT_2026\n\n# Quick 150 DPI grayscale receipt scan\npython scripts/scan_cli.py flatbed --paper-size receipt-half --dpi 150 --color-mode grayscale --auto-crop"
+          "code_content": "# High-resolution 600 DPI A4 scan in PNG format\npython scripts/scan_cli.py flatbed --paper-size a4 --resolution 600 --color-mode color --format png --output-directory D:\\Pictures\\Scanned --filename-prefix CONTRACT_2026\n\n# Quick 150 DPI grayscale receipt scan\npython scripts/scan_cli.py flatbed --paper-size receipt-half --resolution 150 --color-mode grayscale --auto-crop"
         }
       ]
     },
@@ -60,9 +60,9 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/headless-cli-engine.js"] = {
           "block_type": "table",
           "table_headers": ["Subcommand", "Key Arguments", "Description"],
           "table_rows": [
-            ["compile-pdf", "--input-directory, --output-pdf, --paper-size, --fit-mode, --resolution, --margin-mm", "Aggregate multiple raster images into a clean multi-page PDF document"],
-            ["cards", "--input-directory, --output-directory, --safety-inset, --corner-radius", "Batch detect and deskew card spreads from an input folder"],
-            ["booklets", "--input-directory, --output-directory, --cut-percentage", "Split open two-page booklet spreads into individual numbered pages"]
+            ["compile-pdf", "--input-directory, --output-file-path, --paper-size, --fit-mode, --resolution, --margin-millimeters", "Aggregate multiple raster images into a clean multi-page PDF document"],
+            ["cards", "--input-directory, --output-directory, --safety-inset-millimeters, --corner-radius-millimeters", "Batch detect and deskew card spreads from an input folder"],
+            ["booklets", "--input-directory, --output-directory, --margin-padding-pixels", "Split open two-page booklet spreads into individual numbered pages"]
           ]
         },
         {
@@ -70,7 +70,7 @@ window.DOCUMENTATION_ITEMS["data/navigation-items/headless-cli-engine.js"] = {
           "block_type": "code_block",
           "header_label": "PowerShell / Bash",
           "language_identifier": "bash",
-          "code_content": "# Compile all images in directory to A4 PDF respecting each image's native embedded DPI\npython scripts/process_cli.py compile-pdf --input-directory \"D:\\Pictures\\Scanned\\Batch_01\" --output-pdf \"D:\\Pictures\\Scanned\\Combined.pdf\" --paper-size a4 --fit-mode contain"
+          "code_content": "# Compile all images in directory to A4 PDF respecting each image's native embedded DPI\npython scripts/process_cli.py compile-pdf --input-directory \"D:\\Pictures\\Scanned\\Batch_01\" --output-file-path \"D:\\Pictures\\Scanned\\Combined.pdf\" --paper-size a4 --fit-mode contain"
         }
       ]
     },

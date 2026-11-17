@@ -101,10 +101,10 @@ Process raw image directories, extract ID cards with rounded corner masks, split
 
 ```powershell
 # Batch extract and deskew ID-1 cards
-python process_cli.py cards --input-dir D:\Pictures\Scanned\raw --output-dir D:\Pictures\Scanned\cards --dpi 600 --background white --format jpg
+python process_cli.py cards --input-directory D:\Pictures\Scanned\raw --output-directory D:\Pictures\Scanned\cards --dpi 600 --background white --format jpg
 
 # Split booklet spreads with RapidOCR auto-orientation
-python process_cli.py booklets --input-dir D:\Pictures\Scanned\spreads --output-dir D:\Pictures\Scanned\pages --reading-direction ltr --compile-pdf D:\Pictures\Scanned\booklet.pdf
+python process_cli.py booklets --input-directory D:\Pictures\Scanned\spreads --output-directory D:\Pictures\Scanned\pages --reading-direction ltr --compile-pdf D:\Pictures\Scanned\booklet.pdf
 
 # Execute 2-pass legal document scan and stitch
 python scan_legal_two_pass.py --output-pdf D:\Pictures\Scanned\legal_doc.pdf --dpi 300
@@ -117,7 +117,7 @@ python scan_legal_two_pass.py --output-pdf D:\Pictures\Scanned\legal_doc.pdf --d
 Combine image sequences into structured PDF files with exact margins and virtual paper bounds:
 
 ```powershell
-python process_cli.py compile-pdf --input-dir D:\Pictures\Scanned\pages --output-file D:\Pictures\Scanned\report.pdf --paper-size a4 --margin-mm 10 --fit-mode contain --jpeg-compression 88 --title "Quarterly Report" --author "AceBurgundy"
+python process_cli.py compile-pdf --input-directory D:\Pictures\Scanned\pages --output-file D:\Pictures\Scanned\report.pdf --paper-size a4 --margin-millimeters 10 --fit-mode contain --jpeg-compression 88 --title "Quarterly Report" --author "AceBurgundy"
 ```
 
 ---
@@ -128,16 +128,16 @@ python process_cli.py compile-pdf --input-dir D:\Pictures\Scanned\pages --output
 
 ```powershell
 # ISO A4 scan directly to single-page PDF at 300 DPI
-python scan_cli.py flatbed --paper-size a4 --dpi 300 --color-mode color --format pdf
+python scan_cli.py flatbed --paper-size a4 --resolution 300 --color-mode color --format pdf --output-directory D:\Pictures\Scanned
 
 # High-resolution 4x6 photo scan with custom offset
-python scan_cli.py flatbed --paper-size photo-4x6 --dpi 1200 --intent photo --offset-x 10 --offset-y 10 --units mm --format jpg
+python scan_cli.py flatbed --paper-size photo-4x6 --resolution 1200 --intent photo --offset-x 10 --offset-y 10 --units mm --format jpg --output-directory D:\Pictures\Scanned
 
 # Continuous booklet loop (max 10 spreads, 8s countdown interval)
-python scan_cli.py booklet --paper-size a4 --dpi 300 --interval 8 --max-scans 10
+python scan_cli.py booklet --paper-size a4 --resolution 300 --interval 8 --max-scans 10
 
 # Direct ID-1 card acquisition with white background
-python scan_cli.py card --dpi 600 --corner-radius-mm 3.18 --background white --no-prompt
+python scan_cli.py card --resolution 600 --corner-radius-millimeters 3.18 --background white --no-prompt
 ```
 
 ---

@@ -437,6 +437,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Scanner Hardware Diagnostics & Network Probe for white-pepper.",
     )
     parser.add_argument(
+        "--ip-address",
+        "--host-address",
         "--ip",
         "--host",
         dest="host_ip",
@@ -445,6 +447,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="IPv4 address of wireless eSCL scanner (default: 192.168.1.150).",
     )
     parser.add_argument(
+        "--port-number",
         "--port",
         dest="port_number",
         type=int,
@@ -452,6 +455,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="HTTP port of wireless eSCL scanner (default: 8080).",
     )
     parser.add_argument(
+        "--timeout-seconds",
         "--timeout",
         dest="timeout_seconds",
         type=float,
@@ -466,6 +470,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Output structured JSON diagnostics report to stdout.",
     )
     parser.add_argument(
+        "--save-capabilities-path",
         "--save-capabilities",
         dest="save_capabilities_path",
         type=str,

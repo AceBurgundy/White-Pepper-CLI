@@ -120,6 +120,8 @@ def _attach_shared_connection_flags(
     )
 
     target_parser.add_argument(
+        "--ip-address",
+        "--host-address",
         "--ip",
         "--host",
         dest="escl_ip",
@@ -128,6 +130,7 @@ def _attach_shared_connection_flags(
         help="IPv4 address or hostname of wireless eSCL scanner (default: 192.168.1.150).",
     )
     target_parser.add_argument(
+        "--port-number",
         "--port",
         dest="escl_port",
         type=int,
@@ -135,6 +138,7 @@ def _attach_shared_connection_flags(
         help="HTTP TCP port of wireless eSCL scanner (default: 8080).",
     )
     target_parser.add_argument(
+        "--output-directory",
         "--output-dir",
         dest="output_directory",
         type=str,
@@ -163,6 +167,7 @@ def _attach_shared_connection_flags(
         help="Mute acoustic completion beeps during scanning.",
     )
     target_parser.add_argument(
+        "--device-identifier",
         "--device-id",
         dest="device_id",
         type=str,
@@ -269,6 +274,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Measurement unit for --width, --height, --offset-x, and --offset-y (default: mm).",
     )
     flatbed_parser.add_argument(
+        "--resolution",
         "--dpi",
         dest="resolution_dpi",
         type=int,
@@ -350,13 +356,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Automatically crop uniform white borders around scanned content.",
     )
     flatbed_parser.add_argument(
+        "--subfolder",
         "--folder",
         dest="subfolder_name",
         type=str,
         default=None,
-        help="Optional subfolder inside --output-dir (e.g., boy-gatas-receipts).",
+        help="Optional subfolder inside --output-directory (e.g., boy-gatas-receipts).",
     )
     flatbed_parser.add_argument(
+        "--filename-prefix",
         "--prefix",
         dest="filename_prefix",
         type=str,
@@ -421,6 +429,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="JPEG quality factor from 1 to 100 when saving as jpg (default: 95).",
     )
     card_parser.add_argument(
+        "--safety-inset-millimeters",
         "--safety-inset-mm",
         "--padding",
         dest="safety_inset_mm",
@@ -429,6 +438,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Card edge safety inset in millimeters (default: 0.5).",
     )
     card_parser.add_argument(
+        "--corner-radius-millimeters",
         "--corner-radius-mm",
         "--corner-radius",
         dest="corner_radius_mm",
@@ -458,6 +468,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Start scanning immediately without waiting for interactive SPACEBAR press.",
     )
     card_parser.add_argument(
+        "--filename-prefix",
         "--prefix",
         "--name",
         dest="card_filename_prefix",
@@ -479,6 +490,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Platen paper size for spread capture (default: full).",
     )
     booklet_parser.add_argument(
+        "--resolution",
         "--dpi",
         dest="resolution_dpi",
         type=int,
@@ -528,6 +540,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     _attach_shared_connection_flags(legal_stitch_parser, use_suppress_defaults=True)
     legal_stitch_parser.add_argument(
+        "--document-name",
         "--name",
         "--prefix",
         dest="document_name",
@@ -559,6 +572,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Output format: pdf (default) or png.",
     )
     legal_stitch_parser.add_argument(
+        "--inter-process-communication-mode",
         "--ipc-mode",
         dest="enable_ipc_mode",
         action="store_true",

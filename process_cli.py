@@ -92,6 +92,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Batch or single-file deskew, edge-pin, and mask raw card scans.",
     )
     card_parser.add_argument(
+        "--input-directory",
         "--input-dir",
         "--input",
         dest="input_directory",
@@ -100,6 +101,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Input directory or single raw card image path.",
     )
     card_parser.add_argument(
+        "--output-directory",
         "--output-dir",
         dest="output_directory",
         type=str,
@@ -115,6 +117,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="DPI resolution of source scans (default: 300).",
     )
     card_parser.add_argument(
+        "--safety-inset-millimeters",
         "--safety-inset-mm",
         "--padding",
         dest="safety_inset_mm",
@@ -123,6 +126,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Edge safety inset in millimeters trimmed during deskew (default: 0.5).",
     )
     card_parser.add_argument(
+        "--corner-radius-millimeters",
         "--corner-radius-mm",
         "--corner-radius",
         dest="corner_radius_mm",
@@ -158,6 +162,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Batch segment booklet spreads, split dual pages, orient via OCR, and optionally compile PDF.",
     )
     booklet_parser.add_argument(
+        "--input-directory",
         "--input-dir",
         dest="input_directory",
         type=str,
@@ -165,6 +170,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Directory containing booklet spread images.",
     )
     booklet_parser.add_argument(
+        "--output-directory",
         "--output-dir",
         dest="output_directory",
         type=str,
@@ -179,6 +185,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Keep full spreads intact without dual-page left/right splitting.",
     )
     booklet_parser.add_argument(
+        "--no-optical-character-recognition",
         "--no-ocr",
         dest="skip_ocr",
         action="store_true",
@@ -220,6 +227,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Do not pre-rotate even-numbered spreads (default).",
     )
     booklet_parser.add_argument(
+        "--margin-padding-pixels",
         "--margin-padding-px",
         dest="margin_padding_px",
         type=int,
@@ -256,6 +264,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Target PDF page size when --compile-pdf is used (default: auto).",
     )
     booklet_parser.add_argument(
+        "--pdf-margin-millimeters",
         "--pdf-margin-mm",
         dest="pdf_margin_mm",
         type=float,
@@ -263,8 +272,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Page margin in millimeters when --compile-pdf is used (default: 0.0).",
     )
     booklet_parser.add_argument(
-        "--dpi",
         "--resolution",
+        "--dpi",
         dest="resolution_dpi",
         type=int,
         default=300,
@@ -276,6 +285,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Compile an ordered sequence of images into a layout-controlled PDF document.",
     )
     pdf_parser.add_argument(
+        "--input-directory",
         "--input-dir",
         "--input",
         dest="input_directory",
@@ -284,7 +294,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Input directory or image file path(s) (comma-separated when passing multiple files).",
     )
     pdf_parser.add_argument(
+        "--output-file-path",
         "--output-file",
+        "--output-pdf",
         "--output",
         dest="output_file_path",
         type=str,
@@ -306,6 +318,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Virtual PDF page orientation: auto, portrait, or landscape (default: auto).",
     )
     pdf_parser.add_argument(
+        "--width-millimeters",
         "--width-mm",
         dest="custom_width_mm",
         type=float,
@@ -313,6 +326,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Custom PDF page width in millimeters when --paper-size=custom.",
     )
     pdf_parser.add_argument(
+        "--height-millimeters",
         "--height-mm",
         dest="custom_height_mm",
         type=float,
@@ -320,6 +334,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Custom PDF page height in millimeters when --paper-size=custom.",
     )
     pdf_parser.add_argument(
+        "--margin-millimeters",
         "--margin-mm",
         dest="margin_mm",
         type=float,
@@ -370,6 +385,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Stitch top upright and bottom upside-down Letter scans into a seamless Legal document.",
     )
     legal_parser.add_argument(
+        "--top-image-path",
         "--top",
         dest="top_image_path",
         type=Path,
@@ -377,6 +393,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Path to Pass 1 (top upright) Letter scan.",
     )
     legal_parser.add_argument(
+        "--bottom-image-path",
         "--bottom",
         dest="bottom_image_path",
         type=Path,
@@ -384,6 +401,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Path to Pass 2 (bottom upside-down) Letter scan.",
     )
     legal_parser.add_argument(
+        "--output-file-path",
+        "--output-path",
         "--output",
         "-o",
         dest="output_path",
@@ -392,6 +411,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Destination output path (PDF or PNG).",
     )
     legal_parser.add_argument(
+        "--resolution",
         "--dpi",
         dest="resolution_dpi",
         type=int,
